@@ -13,10 +13,14 @@
 /* Natives */
 
 native umenu_register_category(cid = 0, bool:items_first = true);
-
 native umenu_add_item(cid);
 
 native umenu_display(pid, cid, bool:clear_ctg_chain = false);
+native umenu_close(pid);
+
+native umenu_get_current_ctg(pid);
+
+native umenu_is_ctg_chain_empty(pid);
 
 /* Forwards */
 

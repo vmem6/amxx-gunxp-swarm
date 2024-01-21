@@ -8,8 +8,8 @@
 /* Natives */
 
 /* Maintained for backwards compatibility. */
-native register_gxm_item(const title[], const desc[], cost, level, GxpUlClass:class, access, weapon_id);
-native register_item_gxm(const title[], const desc[], cost, level, GxpUlClass:class, access, weapon_id);
+native register_gxm_item(const title[], const desc[], cost, level, class, access, weapon_id);
+native register_item_gxm(const title[], const desc[], cost, level, class, access, weapon_id);
 
 native Array:gxp_ul_get_class_items(GxpUlClass:class);
 native gxp_ul_get_by_id(id, ul[GxpUl]);
@@ -17,6 +17,8 @@ native gxp_ul_get_by_id(id, ul[GxpUl]);
 native gxp_ul_activate(pid, const ul[GxpUl]);
 native gxp_ul_activate_free(pid);
 native gxp_ul_activate_newbie(pid);
+
+native gxp_ul_deactivate(pid);
 
 /* Forward */
 

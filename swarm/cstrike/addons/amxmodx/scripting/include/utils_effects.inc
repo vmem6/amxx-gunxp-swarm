@@ -95,19 +95,19 @@ stock ufx_blood_splatter(pid)
   static origin[3];
   get_user_origin(pid, origin);
 
-  new vector[3];
-  vector[0] = random_num(-360, 360);
-  vector[1] = random_num(-360, 360);
-  vector[2] = -10;
+  new Float:vector[3];
+  vector[0] = random_float(-360.0, 360.0);
+  vector[1] = random_float(-360.0, 360.0);
+  vector[2] = -10.0;
 
   ufx_te_bloodstream(origin, vector, 70, random_num(50, 100));
 
   for (new i = 0; i != 4; ++i) {
-    new Float:forigin[3];
-    forigin[0] = origin[0] + random_float(-100.0, 100.0);
-    forigin[2] = origin[1] + random_float(-100.0, 100.0);
-    forigin[2] = origin[2] + random_float(-100.0, 100.0);
-    ufx_te_splash(forigin, random_num(190, 197));
+    new tmp_origin[3];
+    tmp_origin[0] = origin[0] + random_num(-100, 100);
+    tmp_origin[2] = origin[1] + random_num(-100, 100);
+    tmp_origin[2] = origin[2] + random_num(-100, 100);
+    ufx_te_splash(tmp_origin, random_num(190, 197));
   }
 }
 
@@ -116,6 +116,17 @@ stock ufx_bartime(pid, length)
   _UFX_FETCH_MSGID(BarTime);
   message_begin(MSG_ONE, _UFX_MSGID(BarTime), .player = pid);
   write_short(length);
+  message_end();
+}
+
+stock ufx_fog(const pid, const rgb[3], const Float:density = 0.001, bool:clear = false)
+{
+  _UFX_FETCH_MSGID(Fog);
+  message_begin(pid ? MSG_ONE : MSG_BROADCAST, _UFX_MSGID(Fog), .player = pid);
+  write_byte(clamp(rgb[0], 0, 255));
+  write_byte(clamp(rgb[1], 0, 255));
+  write_byte(clamp(rgb[2], 0, 255));
+  write_long(clear ? 0 : _:floatclamp(density, 0.0001, 0.25));
   message_end();
 }
 
@@ -152,13 +163,13 @@ stock ufx_te_dlight(const origin[3], radius, const rgb[3], life, decay_rate)
   message_end();
 }
 
-stock ufx_te_splash(const Float:origin[3], decal_idx)
+stock ufx_te_splash(const origin[3], decal_idx)
 {
   message_begin(MSG_BROADCAST, SVC_TEMPENTITY);
   write_byte(TE_WORLDDECAL);
-  write_coord_f(origin[0]);
-  write_coord_f(origin[1]);
-  write_coord_f(origin[2]);
+  write_coord(origin[0]);
+  write_coord(origin[1]);
+  write_coord(origin[2]);
   write_byte(decal_idx);
   message_end();
 }

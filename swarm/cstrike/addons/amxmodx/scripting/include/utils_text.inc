@@ -96,9 +96,9 @@ stock fix_colors(str[], maxlen)
 {
   new color[3] = { '^^', '1', '^0' };
   new fixed[2] = { 0x1, '^0' };
-#define TB_COLOR_DEFAULT  0x1
-#define TB_COLOR_GREEN    0x4
-  for (new i = TB_COLOR_DEFAULT; i <= TB_COLOR_GREEN; ++i) {
+#define UTEXT_COLOR_DEFAULT  0x1
+#define UTEXT_COLOR_GREEN    0x4
+  for (new i = UTEXT_COLOR_DEFAULT; i <= UTEXT_COLOR_GREEN; ++i) {
     color[1] = '0' + i;
     fixed[0] = i;
     replace_string(str, maxlen, color, fixed);

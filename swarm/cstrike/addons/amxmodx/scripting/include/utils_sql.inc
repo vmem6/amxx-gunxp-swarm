@@ -8,16 +8,17 @@
 
 #include <utils_sql_const>
 
-/* Macros */
+/* Stocks */
 
 /*
- * Defines (global) variables for storing SQL pCVar values in.
+ * Global variables for storing SQL CVar values in.
  */
-#define USQL_DEFINE_VARS() \
-  new g_pcvar_sql_host; \
-  new g_pcvar_sql_user; \
-  new g_pcvar_sql_pass; \
-  new g_pcvar_sql_db;
+stock g_usql_host[MAX_SQL_HOSTNAME_LENGTH + 1];
+stock g_usql_user[MAX_SQL_USER_NAME_LENGTH + 1];
+stock g_usql_pass[MAX_SQL_PASSWORD_LENGTH + 1];
+stock g_usql_db[MAX_SQL_DATABASE_NAME_LENGTH + 1];
+
+/* Macros */
 
 /*
  * Registers necessary CVars for connecting to SQL server:
@@ -29,24 +30,23 @@
  * 
  * @param %0          CVar prefix.
  */
-#define USQL_REGISTER_CVARS(%0) \
-  g_pcvar_sql_host    = register_cvar(#%0+"_sql_host", "127.0.0.1", FCVAR_PROTECTED); \
-  g_pcvar_sql_user    = register_cvar(#%0+"_sql_user", "root", FCVAR_PROTECTED); \
-  g_pcvar_sql_pass    = register_cvar(#%0+"_sql_pass", "pass", FCVAR_PROTECTED); \
-  g_pcvar_sql_db      = register_cvar(#%0+"_sql_db", "db", FCVAR_PROTECTED);
-
-/*
- * Fetches the values of SQL CVars registered through `SQL_REGISTER_CVARS`.
- */
-#define USQL_FETCH_CVARS() \
-  new _host[MAX_SQL_HOSTNAME_LENGTH + 1]; \
-  new _user[MAX_SQL_USER_NAME_LENGTH + 1]; \
-  new _pass[MAX_SQL_PASSWORD_LENGTH + 1]; \
-  new _db[MAX_SQL_DATABASE_NAME_LENGTH + 1]; \
-  get_pcvar_string(g_pcvar_sql_host, _host, charsmax(_host)); \
-  get_pcvar_string(g_pcvar_sql_user, _user, charsmax(_user)); \
-  get_pcvar_string(g_pcvar_sql_pass, _pass, charsmax(_pass)); \
-  get_pcvar_string(g_pcvar_sql_db, _db, charsmax(_db));
+#define USQL_REGISTER_CVARS(%0)                                   \
+  bind_pcvar_string(                                              \
+    register_cvar(#%0+"_sql_host", "127.0.0.1", FCVAR_PROTECTED), \
+    g_usql_host, charsmax(g_usql_host)                            \
+  );                                                              \
+  bind_pcvar_string(                                              \
+    register_cvar(#%0+"_sql_user", "root", FCVAR_PROTECTED),      \
+    g_usql_user, charsmax(g_usql_user)                            \
+  );                                                              \
+  bind_pcvar_string(                                              \
+    register_cvar(#%0+"_sql_pass", "pass", FCVAR_PROTECTED),      \
+    g_usql_pass, charsmax(g_usql_pass)                            \
+  );                                                              \
+  bind_pcvar_string(                                              \
+    register_cvar(#%0+"_sql_db", "db", FCVAR_PROTECTED),          \
+    g_usql_db, charsmax(g_usql_db)                                \
+  )
 
 /* Natives */
 

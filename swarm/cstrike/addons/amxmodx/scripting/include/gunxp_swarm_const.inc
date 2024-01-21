@@ -6,13 +6,31 @@
 #include <amxmisc>
 #include <amxconst>
 
-#include "l4d.inl"
+/* Common > Internal > Definitions */
 
-/* Common > Internal */
+#define _GXP_MAX_CLASS_NUM 18
 
 #define _GXP_PRIM_GUN_COUNT 18
 #define _GXP_SECN_GUN_COUNT 6
 #define _GXP_GUN_COUNT      _GXP_PRIM_GUN_COUNT + _GXP_SECN_GUN_COUNT
+
+/* Common > Internal > Enums */
+
+enum _:GxpAmmoType
+{
+  gxp_ammo_357sig = 0,
+  gxp_ammo_762nato,
+  gxp_ammo_buckshot,
+  gxp_ammo_45acp,
+  gxp_ammo_556nato,
+  gxp_ammo_9mm,
+  gxp_ammo_57mm,
+  gxp_ammo_338magnum,
+  gxp_ammo_556natobox,
+  gxp_ammo_50ae
+};
+
+/* Common > Internal > Other */
 
 stock const _gxp_gun_names[_GXP_GUN_COUNT][] =
 {
@@ -68,6 +86,34 @@ stock const _gxp_internal_gun_names[_GXP_GUN_COUNT][] =
   "weapon_g3sg1",
   "weapon_awp",
   "weapon_m249"
+};
+
+stock const _gxp_gun_models[_GXP_GUN_COUNT][] =
+{
+  "models/w_glock18.mdl",
+  "models/w_usp.mdl",
+  "models/w_p228.mdl",
+  "models/w_fiveseven.mdl",
+  "models/w_deagle.mdl",
+  "models/w_elite.mdl",
+  "models/w_tmp.mdl",
+  "models/w_mac10.mdl",
+  "models/w_ump45.mdl",
+  "models/w_mp5.mdl",
+  "models/w_p90.mdl",
+  "models/w_scout.mdl",
+  "models/w_famas.mdl",
+  "models/w_galil.mdl",
+  "models/w_m3.mdl",
+  "models/w_xm1014.mdl",
+  "models/w_ak47.mdl",
+  "models/w_m4a1.mdl",
+  "models/w_aug.mdl",
+  "models/w_sg552.mdl",
+  "models/w_sg550.mdl",
+  "models/w_g3sg1.mdl",
+  "models/w_awp.mdl",
+  "models/w_m249.mdl"
 };
 
 stock const _gxp_weapon_ids[_GXP_GUN_COUNT] =
@@ -126,9 +172,54 @@ stock const _gxp_bpammo[_GXP_GUN_COUNT] =
   400   // m249
 };
 
-/* Common > Public */
+stock const Float:_gxp_ammo_kb_powers[] =
+{
+  0.5, // 357sig
+  1.5, // 762nato
+  4.5, // buckshot
+  0.5, // 45acp
+  0.5, // 556nato
+  0.5, // 9mm
+  0.5, // 57mm
+  6.5, // 338magnum
+  0.8, // 556natobox
+  0.8  // 50ae
+};
 
-#define GXP_MAX_LEVEL _GXP_GUN_COUNT
+stock const _gxp_wpn_ammo_types[] =
+{
+  -1,                   // unused
+  gxp_ammo_357sig,      // p228
+  -1,                   // unused (glock; see glock18)
+  gxp_ammo_762nato,     // scout
+  -1,                   // unused (he grenade)
+  gxp_ammo_buckshot,    // xm1014
+  -1,                   // unused (c4)
+  gxp_ammo_45acp,       // mac10
+  gxp_ammo_556nato,     // aug
+  -1,                   // unused (smoke grenade)
+  gxp_ammo_9mm,         // elite
+  gxp_ammo_57mm,        // fiveseven
+  gxp_ammo_45acp,       // ump45
+  gxp_ammo_556nato,     // sg550
+  gxp_ammo_556nato,     // galil
+  gxp_ammo_556nato,     // famas
+  gxp_ammo_45acp,       // usp
+  gxp_ammo_9mm,         // glock18
+  gxp_ammo_338magnum,   // awp
+  gxp_ammo_9mm,         // mp5navy
+  gxp_ammo_556natobox,  // m249
+  gxp_ammo_buckshot,    // m3
+  gxp_ammo_556nato,     // m4a1
+  gxp_ammo_9mm,         // tmp
+  gxp_ammo_762nato,     // g3sg1
+  -1,                   // unused (flashbang)
+  gxp_ammo_50ae,        // deagle
+  gxp_ammo_556nato,     // sg552
+  gxp_ammo_762nato,     // ak47
+  -1,                   // unused (knife)
+  gxp_ammo_57mm         // p90
+};
 
 /* GXP:SWARM:POWERS */
 
@@ -147,19 +238,24 @@ enum _:GxpPower
   pwr_he_regen,
   pwr_sg_regen,
   pwr_shooting_interval,
-  pwr_death_xp,
   pwr_fall_dmg,
   pwr_jump_bomb_chance,
   pwr_jump_bomb_dmg,
   pwr_zm_add_health,
   pwr_vaccines,
-  pwr_chosen_vaccines[MAXCLASS]
-}
+  pwr_chosen_vaccines[_GXP_MAX_CLASS_NUM]
+};
 
 /* Internal */
 
-#define _GXP_POWER_COUNT      GxpPower - MAXCLASS
+#define GXP_MAX_CALLBACK_LENGTH 64
+
+/* Internal */
+
+#define _GXP_POWER_COUNT      GxpPower - _GXP_MAX_CLASS_NUM
 #define _GXP_POWER_MAX_LEVEL  5
+
+stock const _gxp_power_prices[_GXP_POWER_COUNT] = { 1, 3, 6, 12, 25 };
 
 stock const _gxp_power_ml_names[_GXP_POWER_COUNT][] =
 {
@@ -174,7 +270,6 @@ stock const _gxp_power_ml_names[_GXP_POWER_COUNT][] =
   "GXP_PWR_HE_REGEN",
   "GXP_PWR_SG_REGEN",
   "GXP_PWR_SHOOTING_INTERVAL",
-  "GXP_PWR_DEATH_XP",
   "GXP_PWR_FALL_DMG",
   "GXP_PWR_JUMP_BOMB_CHANCE",
   "GXP_PWR_JUMP_BOMB_DMG",
@@ -182,10 +277,49 @@ stock const _gxp_power_ml_names[_GXP_POWER_COUNT][] =
   "GXP_PWR_VACCINES"
 };
 
+stock const _gxp_power_units[_GXP_POWER_COUNT - 1][] =
+{
+  "u/s",    // speed
+  "%",      // respawn chance
+  "hp",     // base hp
+  "×",      // damage
+  "g",      // gravity
+  "hp/s",   // hp regen
+  "xp",     // bonus xp
+  "dmg",    // explosion damage
+  "s",      // he regen
+  "s",      // sg regen
+  "s",      // shooting interval
+  "%",      // fall dmg
+  "%",      // jump bomb chance
+  "dmg",    // jump bomb dmg
+  "hp"      // zm add health
+};
+
+stock const _gxp_power_sign[_GXP_POWER_COUNT - 1][] =
+{
+  "+",  // speed
+  "",   // respawn chance
+  "+",  // base hp
+  "",   // damage
+  "-",  // gravity
+  "",   // hp regen
+  "",   // bonus xp
+  "",   // explosion damage
+  "",   // he regen
+  "",   // sg regen
+  "-",  // shooting interval
+  "-",  // fall dmg
+  "",   // jump bomb chance
+  "",   // jump bomb dmg
+  "+"   // zm add health
+};
+
 /* GXP:SWARM:SQL */
 
-#define GXP_SWARM_SQL_PLAYERS_TABLE "swarm_players"
-#define GXP_SWARM_SQL_POWERS_TABLE  "swarm_powers"
+#define _GXP_SWARM_SQL_PLAYERS_TABLE  "swarm_players"
+#define _GXP_SWARM_SQL_POWERS_TABLE   "swarm_powers"
+#define _GXP_SWARM_SQL_STATS_TABLE    "swarm"
 
 /* GXP:SWARM:CONFIG */
 
@@ -222,6 +356,7 @@ enum _:GxpClass
   Float:cls_ability_cooldown,
   cls_xp_when_killed,
   bool:cls_default_sounds,
+  bool:cls_midair_ability,
   Trie:cls_misc,
   Trie:cls_sounds,
   Trie:cls_models
@@ -255,6 +390,17 @@ enum _:GxpUl
   gxp_ul_access,
   gxp_ul_weapon_id,
   bool:gxp_ul_newbie
+};
+
+/* GXP:SWARM:STATS */
+
+enum GxpPlayerStats
+{
+  gxp_pstats_kills,
+  gxp_pstats_deaths,
+  gxp_pstats_hs,
+  gxp_pstats_suicides,
+  gxp_pstats_survivals
 };
 
 /* GXP:SWARM:CORE */
@@ -292,9 +438,6 @@ enum GxpPlayer
 {
   GxpTeam:pd_team,
   pd_class,
-  pd_kills,
-  pd_hs,
-  pd_deaths,
   pd_xp_curr,
   pd_xp_bought,
   pd_level,
@@ -303,11 +446,13 @@ enum GxpPlayer
   pd_prs_bought,
   pd_primary_gun,
   pd_secondary_gun,
+  pd_respawn_count,
   GxpRememberSelection:pd_remember_sel,
   Float:pd_ability_last_used,
   pd_powers[GxpPower],
   Array:pd_uls[GxpUlClass],
-  pd_respawn_count
+  pd_stats[GxpPlayerStats],
+  pd_round_kills
 };
 
 /* Internal */
