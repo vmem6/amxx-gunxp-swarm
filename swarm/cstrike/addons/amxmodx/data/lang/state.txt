@@ -1,0 +1,17 @@
+[lt]
+STATE_UI_MENU_UNIQUE_ID = Keisti UID saugojimo tipą \y[%L]
+STATE_UI_MENU_SETTINGS_TITLE = Nustatymai
+STATE_UI_MENU_UNIQUE_ID_TITLE = \rUID Save Tipas \w[dabartinis: \r%L\w]
+STATE_UI_MENU_INSECURE = \r[nesaugu]
+STATE_AUTHID = SteamID
+STATE_IP = IP adresas
+STATE_NAME = Nick'as
+
+[en]
+STATE_UI_MENU_UNIQUE_ID = Change UID save type \y[%L]
+STATE_UI_MENU_SETTINGS_TITLE = Settings
+STATE_UI_MENU_UNIQUE_ID_TITLE = \rUID Save Type \w[current: \r%L\w]
+STATE_UI_MENU_INSECURE = \r[insecure]
+STATE_AUTHID = SteamID
+STATE_IP = IP address
+STATE_NAME = Nickname
