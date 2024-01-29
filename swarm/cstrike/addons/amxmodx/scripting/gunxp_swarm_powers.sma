@@ -8,6 +8,7 @@
 #include <gunxp_swarm_const>
 
 #include <utils_effects>
+#include <utils_text>
 #include <utils_offsets>
 
 #define BASE_GRAVITY 800.0
@@ -40,6 +41,9 @@ enum _:TaskID (+= 1235)
   tid_sg_regen
 };
 
+new Float:g_vip_gravity;
+new Float:g_freevip_gravity;
+
 new Float:g_respawn_delay;
 new Float:g_hp_regen_interval;
 
@@ -47,6 +51,8 @@ new Float:g_base_he_regen;
 new Float:g_base_sg_regen;
 
 new g_delta[GxpPower];
+
+new g_prefix[_GXP_MAX_PREFIX_LENGTH + 1];
 
 new g_spr_boom;
 
@@ -71,6 +77,9 @@ public plugin_init()
   register_plugin(_GXP_SWARM_POWERS_PLUGIN, _GXP_SWARM_VERSION, _GXP_SWARM_AUTHOR);
  
   /* CVars */
+
+  bind_pcvar_float(register_cvar("gxp_vip_gravity", "0.91"), g_vip_gravity);
+  bind_pcvar_float(register_cvar("gxp_freevip_gravity", "0.94"), g_freevip_gravity);
   
   bind_pcvar_float(register_cvar("gxp_pwr_he_regen_base", "120.0"), g_base_he_regen);
   bind_pcvar_float(register_cvar("gxp_pwr_sg_regen_base", "120.0"), g_base_sg_regen);
@@ -120,6 +129,9 @@ public plugin_init()
 
 public plugin_cfg()
 {
+  bind_pcvar_string(get_cvar_pointer("gxp_info_prefix"), g_prefix, charsmax(g_prefix));
+  fix_colors(g_prefix, charsmax(g_prefix));
+
   bind_pcvar_float(get_cvar_pointer("gxp_respawn_delay"), g_respawn_delay);
 }
 
@@ -199,17 +211,6 @@ public gxp_player_spawned(pid)
 
   new GxpTeam:team = GxpTeam:gxp_get_player_data(pid, pd_team);
   if (team == tm_survivor) {
-    /* POWER:BASE HP */
-    lvl = pwrs[pwr_base_hp];
-    if (lvl != 0) {
-      new class[GxpClass];
-      gxp_get_player_class(pid, class);
-      new base_hp = class[cls_health];
-      if (gxp_is_vip(pid))
-        base_hp += 20;
-      set_pev(pid, pev_health, float(base_hp + g_delta[pwr_base_hp]*lvl));
-    }
-
     /* POWER:HP REGEN */
     lvl = pwrs[pwr_hp_regen];
     if (lvl != 0) {
@@ -222,13 +223,26 @@ public gxp_player_spawned(pid)
     lvl = pwrs[pwr_speed];
     if (lvl != 0)
       set_max_speed(pid, lvl);
+
+    /* POWER:GRAVITY */
+    lvl = pwrs[pwr_gravity];
+    if (lvl != 0) {
+      set_gravity(pid, lvl);
+    } else {
+      if (gxp_is_vip(pid))
+        set_pev(pid, pev_gravity, g_vip_gravity);
+      else if (gxp_is_freevip(pid))
+        set_pev(pid, pev_gravity, g_freevip_gravity);
+    }
   } else if (team == tm_zombie) {
     /* POWER:ZM ADD HEALTH */
     /* Handled in `gunxp_swarm.sma`. */
 
     /* POWER:JUMP BOMB CHANCE */
-    if (roll_dice(g_delta[pwr_jump_bomb_chance]*pwrs[pwr_jump_bomb_chance]))
+    if (roll_dice(g_delta[pwr_jump_bomb_chance]*pwrs[pwr_jump_bomb_chance])) {
       jump_bomb_add(pid, 1);
+      chat_print(pid, g_prefix, "%L", pid, "GXP_CHAT_RECEIVED_JUMP_BOMB");
+    }
   }
 }
 
@@ -346,18 +360,10 @@ public ham_weapon_primaryattack_post(wpn)
 public event_curweapon(pid)
 {
   RETURN_IF_NOT_SURVIVOR(pid);
-
   /* POWER:GRAVITY */
   GET_POWER_LEVEL(lvl, pid, pwr_gravity);
-  RETURN_IF_NO_PWR(lvl);
-
-  new class[GxpClass];
-  gxp_get_player_class(pid, class);
-  set_pev(
-    pid,
-    pev_gravity,
-    (BASE_GRAVITY*class[cls_gravity] - float(g_delta[pwr_gravity]*lvl))/BASE_GRAVITY
-  );
+  if (lvl != 0)
+    set_gravity(pid, lvl)
 }
 
 /* Tasks */
@@ -386,9 +392,7 @@ public task_regen_hp(tid)
   new pwrs[GxpPower];
   gxp_get_player_data(pid, pd_powers, pwrs);
 
-  new Float:max_hp = float(100 + g_delta[pwr_base_hp]*pwrs[pwr_base_hp]);
-  if (gxp_is_vip(pid))
-    max_hp += 20.0;
+  new Float:max_hp = float(gxp_get_max_hp(pid));
   new Float:hp;
   pev(pid, pev_health, hp);
   if (hp < max_hp) {
@@ -422,6 +426,18 @@ set_max_speed(pid, lvl)
     pid,
     pev_maxspeed,
     float(class[cls_speed] + g_delta[pwr_speed]*lvl - (PRS_THRESHOLD_REACHED(pid, 130) ? 10 : 0))
+  );
+}
+
+set_gravity(pid, lvl)
+{
+  /* POWER:GRAVITY */
+  new class[GxpClass];
+  gxp_get_player_class(pid, class);
+  set_pev(
+    pid,
+    pev_gravity,
+    (BASE_GRAVITY*class[cls_gravity] - float(g_delta[pwr_gravity]*lvl))/BASE_GRAVITY
   );
 }
 

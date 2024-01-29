@@ -27,6 +27,17 @@ public plugin_init()
 
 public gxp_player_spawned(pid)
 {
-  if (_gxp_is_player_of_class(pid, g_id, g_props))
+  if (!_gxp_is_player_of_class(pid, g_id, g_props))
+    return;
+
+  gxp_set_player_data(pid, pd_ability_available, false);
+
+  if (gxp_is_sadmin(pid))
+    gxp_user_set_model(pid, g_props, "playersadmin");
+  else if (gxp_is_admin(pid))
+    gxp_user_set_model(pid, g_props, "playeradmin");
+  else if (gxp_is_vip(pid))
+    gxp_user_set_model(pid, g_props, "playervip");
+  else
     gxp_user_set_model(pid, g_props);
 }

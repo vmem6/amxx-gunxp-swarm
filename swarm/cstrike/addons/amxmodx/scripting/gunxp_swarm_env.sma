@@ -11,11 +11,11 @@
 #define SKY_CLASSNAME "dynamic_sky"
 #define SKY_MODEL     "models/jailas_swarm/sky.mdl"
 
-#define AMBIENCE_WAV          "jailas_swarm/howlingwind.wav"
-#define AMBIENCE_WAV_DURATION 39.615
+// #define AMBIENCE_WAV          "jailas_swarm/howlingwind.wav"
+// #define AMBIENCE_WAV_DURATION 39.615
 
 #define FOG_COLOR   {100, 100, 100}
-#define FOG_DENSITY 0.0012 // [0.0001; 0.25]
+#define FOG_DENSITY 0.0008 // [0.0001; 0.25]
 
 enum (+= 1000)
 {
@@ -28,7 +28,7 @@ new g_sky_ent;
 public plugin_precache()
 {
   /* Sounds */
-  precache_sound(AMBIENCE_WAV);
+  // precache_sound(AMBIENCE_WAV);
 
   /* Models */
   engfunc(EngFunc_PrecacheModel, SKY_MODEL);
@@ -65,7 +65,7 @@ public plugin_end()
 public client_putinserver(pid)
 {
   set_task_ex(0.1, "task_update_fog", pid + tid_update_fog);
-  set_task_ex(0.1, "task_play_ambience", pid + tid_ambience);
+  // set_task_ex(0.1, "task_play_ambience", pid + tid_ambience);
 }
 
 public client_disconnected(pid, bool:drop, message[], maxlen)
@@ -110,11 +110,11 @@ public event_new_round()
 {
   update_fog(0);
 
-  for (new pid = 1; pid != MAX_PLAYERS + 1; ++pid) {
-    remove_task(pid + tid_ambience);
-    if (is_user_connected(pid) && !is_user_bot(pid))
-      play_ambience(pid);
-  }
+  // for (new pid = 1; pid != MAX_PLAYERS + 1; ++pid) {
+  //   remove_task(pid + tid_ambience);
+  //   if (is_user_connected(pid) && !is_user_bot(pid))
+  //     play_ambience(pid);
+  // }
 }
 
 /* Tasks */
@@ -124,10 +124,10 @@ public task_update_fog(tid)
   update_fog(tid - tid_update_fog);
 }
 
-public task_play_ambience(tid)
-{
-  play_ambience(tid - tid_ambience);
-}
+// public task_play_ambience(tid)
+// {
+//   play_ambience(tid - tid_ambience);
+// }
 
 /* Helpers */
 
@@ -135,6 +135,7 @@ setup()
 {
   set_lights("b");
   create_sky();
+  remove_armouries();
 }
 
 create_sky()
@@ -151,18 +152,25 @@ create_sky()
   engfunc(EngFunc_SetOrigin, g_sky_ent, Float:{0.0, 0.0, 0.0});
 }
 
+remove_armouries()
+{
+  new ent = FM_NULLENT;
+  while ((ent = find_ent_by_class(ent, "armoury_entity")))
+    remove_entity(ent);
+}
+
 update_fog(pid)
 {
   ufx_fog(pid, FOG_COLOR, FOG_DENSITY);
 }
 
-play_ambience(pid)
-{
-  if (!task_exists(pid + tid_ambience)) {
-    client_cmd(pid, "stopsound");
-    set_task_ex(
-      AMBIENCE_WAV_DURATION, "task_play_ambience", pid + tid_ambience, _, _, SetTask_Repeat
-    );
-  }
-  client_cmd(pid, "spk ^"%s^"", AMBIENCE_WAV);
-}
+// play_ambience(pid)
+// {
+//   if (!task_exists(pid + tid_ambience)) {
+//     client_cmd(pid, "stopsound");
+//     set_task_ex(
+//       AMBIENCE_WAV_DURATION, "task_play_ambience", pid + tid_ambience, _, _, SetTask_Repeat
+//     );
+//   }
+//   client_cmd(pid, "spk ^"%s^"", AMBIENCE_WAV);
+// }

@@ -223,7 +223,7 @@ public native_fetch(plugin, argc)
   if (columns == Invalid_Array) {
     add(g_query, charsmax(g_query), "* ");
   } else {
-    populate_field(columns, .inner_casing = "`");
+    populate_field(columns, .outer_casing = false, .inner_casing = "`");
   }
 
   /* Specify table. */
@@ -392,7 +392,8 @@ populate_field(
     }
   }
 
-  if (outer_casing) {
+  if (outer_casing)
     add(g_query, charsmax(g_query), ") ");
-  }
+  else
+    add(g_query, charsmax(g_query), " ");
 }

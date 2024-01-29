@@ -37,9 +37,7 @@ public gxp_player_spawned(pid)
 {
   if (!_gxp_is_player_of_class(pid, g_id, g_props))
     return;
-
   set_pev(pid, pev_gravity, g_props[cls_gravity]);
-
   gxp_user_set_model(pid, g_props);
 }
 

@@ -80,7 +80,6 @@ public gxp_player_spawned(pid)
   UBITS_PUNSET(g_charging, pid);
 
   set_pev(pid, pev_gravity, g_props[cls_gravity]);
-  
   gxp_user_set_model(pid, g_props);
 
   ++g_chargers;

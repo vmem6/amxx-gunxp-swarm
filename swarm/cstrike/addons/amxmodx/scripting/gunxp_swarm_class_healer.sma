@@ -39,6 +39,7 @@ public plugin_init()
 
   /* Forwards > Ham */
 
+  RegisterHam(Ham_TakeDamage, "player", "ham_takedamage_pre");
   RegisterHam(Ham_Item_PreFrame, "player", "ham_item_preframe_post", .Post = 1);
 
   /* Setup */
@@ -70,8 +71,8 @@ public gxp_player_spawned(pid)
   if (!_gxp_is_player_of_class(pid, g_id, g_props))
     return;
 
+  gxp_set_player_data(pid, pd_ability_available, false);
   set_pev(pid, pev_gravity, g_props[cls_gravity]);
-
   gxp_user_set_model(pid, g_props);
 }
 
@@ -110,6 +111,13 @@ public gxp_player_suffer(pid) { gxp_emit_sound(pid, "pain",  g_id, g_props, CHAN
 public gxp_player_died(pid)   { gxp_emit_sound(pid, "death", g_id, g_props, CHAN_VOICE); }
 
 /* Forwards > Ham */
+
+public ham_takedamage_pre(victim, inflictor, attacker, Float:dmg, dmg_bits)
+{
+  if (_gxp_is_player_of_class(victim, g_id, g_props) && dmg > 0.0)
+    gxp_set_player_data(victim, pd_ability_available, true);
+  return HAM_IGNORED;
+}
 
 public ham_item_preframe_post(pid)
 {
@@ -184,6 +192,8 @@ public task_heal(tid)
   new pid = tid - tid_heal;
   if (is_user_connected(pid) && _gxp_is_player_of_class(pid, g_id, g_props)) {
     remove_cam(pid);
+
+    gxp_set_player_data(pid, pd_ability_available, false);
     set_pev(pid, pev_health, float(gxp_get_max_hp(pid)));
     set_pev(pid, pev_flags, pev(pid, pev_flags) & ~FL_FROZEN);
   }
@@ -194,9 +204,11 @@ public task_heal(tid)
 remove_cam(pid)
 {
   new eid = g_cams[pid];
-  if (eid) {
+  if (pev_valid(eid)) {
     engfunc(EngFunc_SetView, pid, pid);
+
     set_pev(eid, pev_flags, FL_KILLME);
     dllfunc(DLLFunc_Think, eid);
+    g_cams[pid] = 0;
   }
 }

@@ -14,11 +14,21 @@
 
 new const g_clcmds[][UCmdCommand] =
 {
+  /* Settings */
+  { "nuostatos",    "handle_say_prefs" },
+  { "nustatymai",   "handle_say_prefs" },
+  { "prefs",        "handle_say_prefs" },
+  { "preferences",  "handle_say_prefs" },
+  { "settings",     "handle_say_prefs" },
   { "/nuostatos",   "handle_say_prefs" },
   { "/nustatymai",  "handle_say_prefs" },
   { "/prefs",       "handle_say_prefs" },
   { "/preferences", "handle_say_prefs" },
   { "/settings",    "handle_say_prefs" },
+  /* Save type */
+  { "tipas",        "handle_say_id"    },
+  { "save",         "handle_say_id"    },
+  { "id",           "handle_say_id"    },
   { "/tipas",       "handle_say_id"    },
   { "/save",        "handle_say_id"    },
   { "/id",          "handle_say_id"    }

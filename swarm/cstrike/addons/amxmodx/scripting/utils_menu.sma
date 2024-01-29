@@ -51,6 +51,7 @@ public plugin_natives()
 
   register_native("umenu_display", "native_display");
   register_native("umenu_close", "native_close");
+  register_native("umenu_refresh", "native_refresh");
 
   register_native("umenu_get_current_ctg", "native_get_current_ctg");
 
@@ -146,6 +147,14 @@ public native_close(plugin, argc)
 
   if (is_user_connected(pid))
     menu_cancel(pid);
+}
+
+public native_refresh(plugin, argc)
+{
+  enum { param_pid = 1 };
+  new pid = get_param(param_pid);
+  if (g_menus[pid][menu_ctg] != -1)
+    render(pid, g_menus[pid][menu_ctg], g_menus[pid][menu_page]);
 }
 
 public native_get_current_ctg(plugin, argc)
@@ -293,6 +302,9 @@ public handle_menu(pid, menu, item)
         new prev_cid = ArrayGetCell(ctg_chain, chainlen - 1);
         ArrayDeleteItem(ctg_chain, chainlen - 1);
         render(pid, prev_cid);
+      } else {
+        g_menus[pid][menu_page] = 0;
+        g_menus[pid][menu_ctg]  = -1;
       }
     }
 

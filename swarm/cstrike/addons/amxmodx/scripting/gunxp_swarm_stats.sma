@@ -29,7 +29,8 @@ new const g_cols[][SQLColumn] =
   { "deaths",     sct_int, 16, "0", true, false },
   { "hs",         sct_int, 16, "0", true, false },
   { "suicides",   sct_int, 16, "0", true, false },
-  { "survivals",  sct_int, 16, "0", true, false }
+  { "survivals",  sct_int, 16, "0", true, false },
+  { "playtime",   sct_int, 16, "0", true, false }
 };
 
 new g_fwd_int_player_loaded;
@@ -100,9 +101,10 @@ load_player(pid, sid)
 
 parse_player_data(pid, Handle:query)
 {
-  gxp_set_player_stat(pid, gxp_pstats_kills,  READ_SQL_RESULT(kills));
-  gxp_set_player_stat(pid, gxp_pstats_deaths, READ_SQL_RESULT(deaths));
-  gxp_set_player_stat(pid, gxp_pstats_hs,     READ_SQL_RESULT(hs));
+  gxp_set_player_stat(pid, gxp_pstats_kills,    READ_SQL_RESULT(kills));
+  gxp_set_player_stat(pid, gxp_pstats_deaths,   READ_SQL_RESULT(deaths));
+  gxp_set_player_stat(pid, gxp_pstats_hs,       READ_SQL_RESULT(hs));
+  gxp_set_player_stat(pid, gxp_pstats_playtime, READ_SQL_RESULT(playtime));
 }
 
 save_player(pid, sid)
@@ -112,12 +114,16 @@ save_player(pid, sid)
     usql_sarray(
       "kills",
       "deaths",
-      "hs"
+      "hs",
+      "suicides",
+      "playtime"
     ),
     usql_asarray(
       gxp_get_player_stat(pid, gxp_pstats_kills),
       gxp_get_player_stat(pid, gxp_pstats_deaths),
-      gxp_get_player_stat(pid, gxp_pstats_hs)
+      gxp_get_player_stat(pid, gxp_pstats_hs),
+      gxp_get_player_stat(pid, gxp_pstats_suicides),
+      gxp_get_player_stat(pid, gxp_pstats_playtime)
     ),
     Array:-1,
     true,

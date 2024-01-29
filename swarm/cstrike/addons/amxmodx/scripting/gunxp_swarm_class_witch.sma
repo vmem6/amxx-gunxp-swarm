@@ -10,14 +10,20 @@
 #include <utils_effects>
 #include <utils_bits>
 
-new g_angry;
-
 new g_angry_speed;
 new Float:g_angry_duration;
 new Float:g_angry_dmg;
 
+new Float:g_vel[3];
+
 new g_id;
 new g_props[GxpClass];
+
+/* Bitfields */
+
+new g_angry;
+
+new g_of_class;
 
 public plugin_init()
 {
@@ -52,19 +58,21 @@ public gxp_player_cleanup(pid)
 
 public gxp_player_spawned(pid)
 {
-  if (!_gxp_is_player_of_class(pid, g_id, g_props))
+  if (!_gxp_is_player_of_class(pid, g_id, g_props)) {
+    UBITS_PUNSET(g_of_class, pid);
     return;
+  }
 
+  UBITS_PSET(g_of_class, pid);
   UBITS_PUNSET(g_angry, pid);
 
   set_pev(pid, pev_gravity, g_props[cls_gravity]);
-
   gxp_user_set_model(pid, g_props);
 }
 
 public gxp_player_used_ability(pid)
 {
-  if (!_gxp_is_player_of_class(pid, g_id, g_props))
+  if (!UBITS_PCHECK(g_of_class, pid))
     return;
 
   new Float:time = get_gametime();
@@ -95,12 +103,20 @@ public gxp_player_died(pid)   { gxp_emit_sound(pid, "death", g_id, g_props, CHAN
 
 public fm_playerprethink_pre(pid)
 {
-  if (!_gxp_is_player_of_class(pid, g_id, g_props) || !UBITS_PCHECK(g_angry, pid))
+  if (!UBITS_PCHECK(g_of_class, pid) || !UBITS_PCHECK(g_angry, pid))
     return;
 
   static origin[3];
   get_user_origin(pid, origin);
   ufx_te_dlight(origin, 150, {200, 0, 0}, 10, 0);
+
+  pev(pid, pev_velocity, g_vel);
+}
+
+public fm_playerprethink_post(pid)
+{
+  if (UBITS_PCHECK(g_of_class, pid))
+    set_pev(pid, pev_velocity, g_vel);
 }
 
 /* Forwards > Ham */
@@ -109,7 +125,8 @@ public ham_takedamage_pre(victim, inflictor, attacker, Float:dmg, dmg_bits)
 {
   if (
     victim != attacker
-    && _gxp_is_player_of_class(attacker, g_id, g_props)
+    && attacker >= 1 && attacker <= MAX_PLAYERS
+    && UBITS_PCHECK(g_of_class, attacker)
     && get_user_weapon(attacker) == CSW_KNIFE
     && UBITS_CHECK(g_angry, attacker)
   ) {
@@ -121,7 +138,7 @@ public ham_takedamage_pre(victim, inflictor, attacker, Float:dmg, dmg_bits)
 
 public ham_item_preframe_post(pid)
 {
-  if (!is_user_alive(pid) || !_gxp_is_player_of_class(pid, g_id, g_props))
+  if (!is_user_alive(pid) || !UBITS_PCHECK(g_of_class, pid))
     return HAM_IGNORED;
   set_pev(
     pid, pev_maxspeed, float(UBITS_PCHECK(g_angry, pid) ? g_angry_speed : g_props[cls_speed])
@@ -133,7 +150,7 @@ public ham_item_preframe_post(pid)
 
 public calm_down(pid)
 {
-  if (!_gxp_is_player_of_class(pid, g_id, g_props))
+  if (!UBITS_PCHECK(g_of_class, pid))
     return;
 
   ufx_screenfade(pid, 1.0, 0.0, ufx_ffade_in, {180, 0, 0, 200});

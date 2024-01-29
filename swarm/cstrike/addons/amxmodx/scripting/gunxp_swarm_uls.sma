@@ -1,9 +1,12 @@
 #include <amxmodx>
 #include <hamsandwich>
+#include <cstrike>
 #include <fakemeta_util>
 
 #include <gunxp_swarm>
 #include <gunxp_swarm_const>
+
+#include <utils_offsets>
 
 #define MAX_PLUGINS 512
 
@@ -16,6 +19,10 @@ new g_fwd_activated_ul;
 /* Maintained for backwards compatibility. */
 new g_fwd_bc_activated_ul[MAX_PLUGINS];
 new g_fwd_bc_deactivated_ul;
+
+/* Messages */
+
+new g_msgid_curweapon;
 
 public plugin_natives()
 {
@@ -55,6 +62,10 @@ public plugin_init()
   /* Forwards > Maintained for backwards compatibility */
 
   g_fwd_bc_deactivated_ul = CreateMultiForward("gxm_item_disabled", ET_IGNORE, FP_CELL);
+
+  /* Messages */
+
+  g_msgid_curweapon = get_user_msgid("CurWeapon");
 }
 
 public plugin_end()
@@ -207,7 +218,7 @@ activate(pid, const ul[GxpUl], bool:bypass_reqs = false, bool:automatic = false)
     ) {
       return;
     }
-    gxp_take_xp(pid, ul[gxp_ul_cost]);
+    gxp_take_xp(pid, ul[gxp_ul_cost], .decrease_lvl = false);
   }
 
   ArrayPushCell(uls, ul[gxp_ul_id]);
@@ -237,9 +248,27 @@ deactivate(pid)
 
     for (new j = 0; j != ArraySize(player_uls[ul_cls]); ++j) {
       get_ul_by_id(ArrayGetCell(player_uls[ul_cls], j), ul);
-      if (wid == ul[gxp_ul_weapon_id]) {
-        ExecuteHamB(Ham_Item_Deploy, fm_get_user_weapon_entity(pid, wid));
-        deployed = true;
+      new ul_wid = ul[gxp_ul_weapon_id];
+
+      /* Reset clip and bpammo of weapons in inventory. */
+      new wpn_ent = fm_get_user_weapon_entity(pid, ul_wid);
+      if (pev_valid(wpn_ent)) {
+        set_pdata_int(wpn_ent, UXO_I_CLIP, _gxp_wpn_default_clip[ul_wid]);
+        cs_set_user_bpammo(pid, ul_wid, _gxp_wpn_default_bpammo[ul_wid]);
+      }
+
+      /* Re-deploy weapon if it's currently equipped. */
+      if (wid == ul_wid) {
+        if (!deployed) {
+          ExecuteHamB(Ham_Item_Deploy, fm_get_user_weapon_entity(pid, wid));
+          deployed = true;
+        }
+
+        emessage_begin(MSG_ONE, g_msgid_curweapon, .player = pid);
+        ewrite_byte(0);
+        ewrite_byte(ul_wid);
+        ewrite_byte(_gxp_wpn_default_clip[ul_wid]);
+        emessage_end();
       }
     }
 

@@ -88,7 +88,6 @@ public gxp_player_spawned(pid)
     return;
 
   set_pev(pid, pev_gravity, g_props[cls_gravity]);
-  
   gxp_user_set_model(pid, g_props);
   fm_set_user_rendering(pid, kRenderFxGlowShell, 255, 0, 0);
 }

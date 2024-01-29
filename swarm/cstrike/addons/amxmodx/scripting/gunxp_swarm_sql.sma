@@ -11,6 +11,9 @@
 #include <utils_sql_stocks>
 #include <utils_string>
 
+/* TODO: remove this at some point. */
+#include "l4d.inl"
+
 #define READ_SQL_RESULT(%0)         SQL_ReadResult(query, SQL_FieldNameToNum(query, #%0))
 #define READ_SQL_SRESULT(%0,%1,%2)  SQL_ReadResult(query, SQL_FieldNameToNum(query, #%0), %1, %2)
 
@@ -128,7 +131,7 @@ public native_set_up(plugin, argc)
   _gxp_stats_set_up();
 }
 
-public native_load_player_data(plugin, argc)
+public bool:native_load_player_data(plugin, argc)
 {
   enum { param_pid = 1 };
   queue_player(get_param(param_pid));
@@ -197,11 +200,9 @@ load_player(pid, sid, SQLState:load = st_load_base)
 parse_player_base(pid, Handle:query)
 {
   gxp_set_player_data(pid, pd_xp_curr,        READ_SQL_RESULT(xp_curr));
-  gxp_set_player_data(pid, pd_xp_curr,        699999); // TODO: remove this.
   gxp_set_player_data(pid, pd_xp_bought,      READ_SQL_RESULT(xp_bought));
   gxp_set_player_data(pid, pd_level,          READ_SQL_RESULT(level));
   gxp_set_player_data(pid, pd_prs_stored,     READ_SQL_RESULT(prs_stored));
-  gxp_set_player_data(pid, pd_prs_stored,     25); // TODO: remove this.
   gxp_set_player_data(pid, pd_prs_used,       READ_SQL_RESULT(prs_used));
   gxp_set_player_data(pid, pd_prs_bought,     READ_SQL_RESULT(prs_bought));
   gxp_set_player_data(pid, pd_primary_gun,    READ_SQL_RESULT(primary_gun));

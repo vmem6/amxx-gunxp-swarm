@@ -38,6 +38,8 @@ new g_max_newbie_respawns_for_bonus_hp;
 new g_survivor_num;
 new g_survivor_xp;
 
+new g_spawns[MAX_PLAYERS + 1];
+
 public plugin_init()
 {
   register_plugin(_GXP_SWARM_INFO_PLUGIN, _GXP_SWARM_VERSION, _GXP_SWARM_AUTHOR);
@@ -45,7 +47,9 @@ public plugin_init()
 
   /* CVars */
 
-  bind_pcvar_string(register_cvar("gxp_info_prefix", "^3[GXP:S]^1 "), g_prefix, charsmax(g_prefix));
+  new pcvar_prefix = register_cvar("gxp_info_prefix", "^3[GXP:S]^1 ");
+  bind_pcvar_string(pcvar_prefix, g_prefix, charsmax(g_prefix));
+  hook_cvar_change(pcvar_prefix, "hook_prefix_change");
 
   bind_pcvar_num(
     register_cvar("gxp_info_remind_prs_every_n_spawn", "3"), g_remind_prs_every_n_spawn
@@ -59,6 +63,8 @@ public plugin_init()
 
 public plugin_cfg()
 {
+  fix_colors(g_prefix, charsmax(g_prefix));
+
   /* Core CVars */
 
   bind_pcvar_num(get_cvar_pointer("gxp_rounds_per_team"), g_rounds_per_team);
@@ -68,6 +74,13 @@ public plugin_cfg()
   bind_pcvar_num(
     get_cvar_pointer("gxp_max_newbie_respawns_for_bonus_hp"), g_max_newbie_respawns_for_bonus_hp
   );
+}
+
+/* Hooks */
+
+public hook_prefix_change(pcvar, const old_val[], const new_val[])
+{
+  fix_colors(g_prefix, charsmax(g_prefix));
 }
 
 /* Forwards > Core */
@@ -89,6 +102,9 @@ public gxp_round_ended(round)
         chat_print(pid, g_prefix, "%L", pid, "GXP_CHAT_N_SURVIVED", g_survivor_num, g_survivor_xp);
     }
   }
+
+  for (new pid = 1; pid != MAX_PLAYERS + 1; ++pid)
+    g_spawns[pid] = 0;
 
   if (round == g_rounds_per_team)
     return;

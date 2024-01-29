@@ -145,6 +145,7 @@ public plugin_init()
 public plugin_cfg()
 {
   bind_pcvar_string(get_cvar_pointer("gxp_info_prefix"), g_prefix, charsmax(g_prefix));
+  fix_colors(g_prefix, charsmax(g_prefix));
 
   bind_pcvar_float(get_cvar_pointer("gxp_pwr_he_regen_base"), g_base_he_regen);
   bind_pcvar_float(get_cvar_pointer("gxp_pwr_sg_regen_base"), g_base_sg_regen);
@@ -458,6 +459,7 @@ public bool:umenu_select(pid, id, UMenuContext:ctx)
     new pwr = id - g_pwr_mids[0];
     new lvl = pwrs[pwr];
     gxp_set_player_data(pid, pd_prs_stored, gxp_get_player_data(pid, pd_prs_stored) - _gxp_power_prices[lvl]);
+    gxp_set_player_data(pid, pd_prs_used, gxp_get_player_data(pid, pd_prs_used) + _gxp_power_prices[lvl]);
     ++pwrs[pwr];
     gxp_set_player_data(pid, pd_powers, .buffer = pwrs);
   /* UL remove/Yes */
@@ -586,9 +588,9 @@ public gxp_player_gained_xp(pid, xp, bonus_xp, const desc[])
   static cycle[MAX_PLAYERS + 1];
 
   if (GxpTeam:gxp_get_player_data(pid, pd_team) == tm_survivor)
-    set_hudmessage(HUD_COLOR_SURVIVOR, 0.8, 0.2 + 0.025*cycle[pid], 0, 0.0, 1.0, 0.0, 0.5);
+    set_hudmessage(HUD_COLOR_SURVIVOR, 0.8, 0.2 + 0.025*cycle[pid], 0, 0.0, 2.0, 0.0, 0.5);
   else
-    set_hudmessage(HUD_COLOR_ZOMBIE, 0.8, 0.2 + 0.025*cycle[pid], 0, 0.0, 1.0, 0.0, 0.5);
+    set_hudmessage(HUD_COLOR_ZOMBIE, 0.8, 0.2 + 0.025*cycle[pid], 0, 0.0, 2.0, 0.0, 0.5);
 
   ShowSyncHudMsg(pid, g_hudsync_xp[cycle[pid]], msg);
 
@@ -824,19 +826,27 @@ public task_show_zombie_hud(tid)
   new class[GxpClass];
   gxp_get_player_class(pid, class);
 
-  new cooldown_left = floatround(
-    class[cls_ability_cooldown] -
-      (get_gametime() - Float:gxp_get_player_data(pid, pd_ability_last_used))
-  );
-  if (cooldown_left > 0) {
-    ShowSyncHudMsg(
-      pid, g_hudsync_bl,
-      "%L", pid, "GXP_HUD_ZOMBIE_STATUS", class[cls_title], pev(pid, pev_health), cooldown_left
+  if (bool:gxp_get_player_data(pid, pd_ability_available)) {
+    new cooldown_left = floatround(
+      class[cls_ability_cooldown] -
+        (get_gametime() - Float:gxp_get_player_data(pid, pd_ability_last_used))
     );
+    if (cooldown_left > 0) {
+      ShowSyncHudMsg(
+        pid, g_hudsync_bl,
+        "%L", pid, "GXP_HUD_ZOMBIE_STATUS_COOLDOWN",
+        class[cls_title], pev(pid, pev_health), cooldown_left
+      );
+    } else {
+      ShowSyncHudMsg(
+        pid, g_hudsync_bl,
+        "%L", pid, "GXP_HUD_ZOMBIE_STATUS_READY", class[cls_title], pev(pid, pev_health)
+      );
+    }
   } else {
     ShowSyncHudMsg(
       pid, g_hudsync_bl,
-      "%L", pid, "GXP_HUD_ZOMBIE_STATUS_PLAIN", class[cls_title], pev(pid, pev_health)
+      "%L", pid, "GXP_HUD_ZOMBIE_STATUS", class[cls_title], pev(pid, pev_health)
     );
   }
 }
