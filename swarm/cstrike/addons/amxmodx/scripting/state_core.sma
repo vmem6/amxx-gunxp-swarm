@@ -1,3 +1,5 @@
+#define DEBUG
+
 #include <amxmodx>
 #include <amxmisc>
 #include <fakemeta>
@@ -9,25 +11,9 @@
 #include <utils_sql_stocks>
 #include <utils_sql_const>
 #include <utils_menu>
+#include <utils_log>
 #include <utils_text>
 #include <utils_bits>
-
-#define DEBUG
-#if defined DEBUG
-  #define DEBUG_DIR "addons/amxmodx/logs/others/state"
-  #define LOG(%0) log_to_file(g_log_filepath, %0)
-  #define LOG_SQL(%0) log_to_file(g_log_filepath_sql, %0)
-  #define GET_INFO(%0) \
-    new _name[MAX_NAME_LENGTH + 1]; get_user_name(%0, _name, charsmax(_name)); \
-    new _sid = state_get_player_sid(%0)
-
-  new g_log_filepath[PLATFORM_MAX_PATH + 1];
-  new g_log_filepath_sql[PLATFORM_MAX_PATH + 1];
-#else
-  #define LOG(%0) //
-  #define LOG_SQL(%0) //
-  #define GET_INFO(%0) //
-#endif
 
 #define SQL_PLAYERS_TABLE "players"
 
@@ -86,15 +72,8 @@ public plugin_init()
 
   /* Miscellaneous */
 
-#if defined DEBUG
-  new filename[20 + 1];
-
-  get_time("core_%Y_%m_%d.log", filename, charsmax(filename));
-  formatex(g_log_filepath, charsmax(g_log_filepath), "%s/%s", DEBUG_DIR, filename);
-
-  get_time("sql_%Y_%m_%d.log", filename, charsmax(filename));
-  formatex(g_log_filepath_sql, charsmax(g_log_filepath_sql), "%s/%s", DEBUG_DIR, filename);
-#endif
+  ulog_register_logger("state_core", "state");
+  ulog_register_logger("state_sql", "state");
 }
 
 public plugin_cfg()
@@ -135,14 +114,15 @@ public client_disconnected(pid, bool:drop, message[], maxlen)
     return;
 
   if (!equal(g_names[pid], g_stored_names[pid])) {
+    /* For whatever reason, names sometimes contain extraneous slashes (\), so
+     * desanitize them beforehand. */
+    usql_desanitize(g_names[pid], charsmax(g_names[]));
     usql_sanitize(g_names[pid], charsmax(g_names[]));
     usql_update_ex(
       usql_sarray("nick"), usql_sarray(g_names[pid]),
       Array:-1, true,
       "`static_id`='%d'", g_sids[pid]
     );
-  } else {
-    server_print("ok: ^"%s^" == ^"%s^"", g_names[pid], g_stored_names[pid]);
   }
 }
 
@@ -260,22 +240,10 @@ load_player_state(pid, call_n)
     g_did_types[pid] = s_did_t_name;
     get_user_name(pid, did, charsmax(did));
   } else {
-#if defined DEBUG
-    new _name[MAX_NAME_LENGTH + 1];
-    get_user_name(pid, _name, charsmax(_name));
-
-    new ip[MAX_IP_LENGTH + 1];
-    get_user_ip(pid, ip, charsmax(ip), .without_port = true);
-
-    new authid[MAX_AUTHID_LENGTH + 1];
-    get_user_authid(pid, authid, charsmax(authid));
-
-    LOG( \
-      "[STATE:CORE::load_player_state] No record found for ^"%s^" (%d). Inserting new one. \
-      [IP: %s] [AuthID: %s]", \
-      _name, pid, ip, authid \
+    ULOG( \
+      "state_core", INFO, pid, \
+      "No record found for ^"@name^" (@id). Inserting new one. [IP: @ip] [AuthID: @authid]" \
     );
-#endif // DEBUG
 
     g_did_types[pid] = s_did_t_authid;
 
@@ -299,13 +267,16 @@ parse_data(pid, Handle:handle)
   SQL_ReadResult(
     handle, SQL_FieldNameToNum(handle, "nick"), g_stored_names[pid], charsmax(g_stored_names[])
   );
+  usql_desanitize(g_stored_names[pid], charsmax(g_stored_names[]));
 }
 
 public usql_query_finished(SQLQuery:query, Handle:handle, bool:success, error[], errnum, data[], sz)
 {
   if (!success) {
     if (query == sq_fetch) {
-      LOG_SQL("[STATE:CORE::usql_query_finished] Query failed. Error (%d): %s", errnum, error);
+      new qstring[256 + 1];
+      SQL_GetQueryString(handle, qstring, charsmax(qstring));
+      ULOG("state_sql", ERROR, 0, "Query failed (1): %s [Error (%d): %s]", qstring, errnum, error);
       // chat_print(0, g_prefix, "%L", pid, "STATE_CHAT_INTERNAL_ERROR", 1);
       return;
     }
@@ -327,7 +298,9 @@ public usql_query_finished(SQLQuery:query, Handle:handle, bool:success, error[],
       chat_print(pid, g_prefix, "%L", pid, "STATE_NAME_RESERVED");
     }
 
-    LOG_SQL("[STATE:CORE::usql_query_finished] Query failed. Error (%d): %s", errnum, error);
+    new qstring[256 + 1];
+    SQL_GetQueryString(handle, qstring, charsmax(qstring));
+    ULOG("state_sql", ERROR, 0, "Query failed (2): %s [Error (%d): %s]", qstring, errnum, error);
     return;
   /* Attempted name change. */
   } else if (sz == 1) {
@@ -342,6 +315,7 @@ public usql_query_finished(SQLQuery:query, Handle:handle, bool:success, error[],
 
     UBITS_PSET(g_forcing_name, pid);
     set_user_info(pid, "name", g_names[pid]);
+    return;
   }
 
   if (query == sq_fetch) {

@@ -59,10 +59,14 @@ public plugin_init()
 public gxp_player_cleanup(pid)
 {
   if (_gxp_is_player_of_class(pid, g_id, g_props)) {
-    set_pev(pid, pev_flags, pev(pid, pev_flags) & ~FL_FROZEN);
+    ufx_bartime(pid, 0);
+
     remove_cam(pid);
+
     remove_task(tid_heal + pid);
     remove_task(tid_heal_effects + pid);    
+
+    set_pev(pid, pev_flags, pev(pid, pev_flags) & ~FL_FROZEN);
   }
 }
 
@@ -100,6 +104,7 @@ public gxp_player_used_ability(pid)
   set_task_ex(float(g_heal_time), "task_heal", tid_heal + pid);
 
   gxp_set_player_data(pid, pd_ability_last_used, time);
+  gxp_set_player_data(pid, pd_ability_in_use, true);
 }
 
 public gxp_player_knife_slashed(pid)  { gxp_emit_sound(pid, "miss", g_id, g_props, CHAN_WEAPON); }
@@ -193,9 +198,13 @@ public task_heal(tid)
   if (is_user_connected(pid) && _gxp_is_player_of_class(pid, g_id, g_props)) {
     remove_cam(pid);
 
-    gxp_set_player_data(pid, pd_ability_available, false);
     set_pev(pid, pev_health, float(gxp_get_max_hp(pid)));
     set_pev(pid, pev_flags, pev(pid, pev_flags) & ~FL_FROZEN);
+
+    gxp_set_player_data(pid, pd_ability_available, false);
+    gxp_set_player_data(pid, pd_ability_in_use, false);
+
+    TrieClear(Trie:gxp_get_player_data(pid, pd_kill_contributors));
   }
 }
 

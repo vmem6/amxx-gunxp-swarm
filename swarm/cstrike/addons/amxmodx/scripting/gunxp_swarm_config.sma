@@ -57,7 +57,7 @@ new Trie:g_classes;
 new g_configs[Config][PLATFORM_MAX_PATH + 1];
 new Config:g_parsed_cfg;
 
-/* Used for easy access to resources that need to be precached. */
+/* Used for easy access to non-class data. */
 new Array:g_sounds;
 new Array:g_models;
 new Trie:g_model_map;
@@ -70,8 +70,12 @@ new Trie:g_key_prop_map;
 public plugin_natives()
 {
   register_library("gxp_swarm_config");
+
   register_native("gxp_config_get_class", "native_get_class");
+  register_native("gxp_config_set_class", "native_set_class");
   register_native("gxp_config_get_model_idx", "native_get_model_idx");
+
+  register_native("gxp_config_get_aggro_zones", "native_get_aggro_zones");
 }
 
 public plugin_precache()
@@ -145,8 +149,8 @@ public plugin_end()
 public native_get_class(plugin, argc)
 {
   enum {
-    param_id = 1,
-    param_dst = 2
+    param_id    = 1,
+    param_class = 2
   };
 
   new id[GXP_MAX_CLASS_ID_LENGTH + 1];
@@ -156,7 +160,24 @@ public native_get_class(plugin, argc)
   TrieGetArray(g_classes, id, g_class, sizeof(g_class));
   /* TODO: check if successful. */
 
-  set_array(param_dst, g_class, sizeof(g_class));
+  set_array(param_class, g_class, sizeof(g_class));
+}
+
+public native_set_class(plugin, argc)
+{
+  enum {
+    param_id    = 1,
+    param_class = 2
+  };
+
+  new id[GXP_MAX_CLASS_ID_LENGTH + 1];
+  get_string(param_id, id, charsmax(id));
+  /* TODO: check if ID exists. */
+
+  get_array(param_class, g_class, sizeof(g_class));
+
+  TrieSetArray(g_classes, id, g_class, sizeof(g_class));
+  /* TODO: check if successful. */
 }
 
 public native_get_model_idx(plugin, argc)
@@ -188,9 +209,17 @@ public native_get_model_idx(plugin, argc)
   }
 
   new model_idx;
-  server_print(model_filepath);
   TrieGetCell(g_model_map, model_filepath, model_idx);
   return model_idx;
+}
+
+public native_get_aggro_zones(plugin, argc)
+{
+  new mapname[MAX_MAPNAME_LENGTH + 1];
+  get_mapname(mapname, charsmax(mapname));
+
+  INI_SetReaders(g_parser, "kv_callback", "ns_callback");
+  INI_SetParseEnd(g_parser, "parse_end");
 }
 
 /* Parsing */

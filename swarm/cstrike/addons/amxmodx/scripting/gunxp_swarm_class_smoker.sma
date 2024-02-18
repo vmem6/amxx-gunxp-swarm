@@ -9,16 +9,27 @@
 #include <gunxp_swarm_const>
 
 #include <utils_effects>
+#include <utils_text>
+#include <utils_bits>
 
-enum
+enum (+= 1000)
 {
-  tid_fish = 7834
+  tid_fish = 7834,
+  tid_give_xp
 };
+
+new g_xp_granted[MAX_PLAYERS + 1];
 
 new g_id;
 new g_props[GxpClass];
 
 new g_spr_white;
+
+new g_prefix[_GXP_MAX_PREFIX_LENGTH + 1];
+
+/* Bitfields */
+
+new g_being_fished;
 
 public plugin_precache()
 {
@@ -44,12 +55,20 @@ public plugin_init()
   g_id = gxp_register_class("smoker", tm_zombie);
 }
 
+public plugin_cfg()
+{
+  bind_pcvar_string(get_cvar_pointer("gxp_info_prefix"), g_prefix, charsmax(g_prefix));
+  fix_colors(g_prefix, charsmax(g_prefix));
+}
+
 /* Forwards > GunXP > Player */
 
 public gxp_cleanup()
 {
-  for (new pid = 1; pid != MAX_PLAYERS + 1; ++pid)
+  for (new pid = 1; pid != MAX_PLAYERS + 1; ++pid) {
     remove_task(tid_fish + pid);
+    remove_task(tid_give_xp + pid);
+  }
 }
 
 public gxp_player_spawned(pid)
@@ -62,8 +81,10 @@ public gxp_player_spawned(pid)
 
 public gxp_player_cleanup(pid)
 {
-  if (_gxp_is_player_of_class(pid, g_id, g_props))
+  if (_gxp_is_player_of_class(pid, g_id, g_props)) {
     remove_task(tid_fish + pid);
+    remove_task(tid_give_xp + pid);
+  }
 }
 
 public gxp_player_used_ability(pid)
@@ -72,7 +93,12 @@ public gxp_player_used_ability(pid)
     return;
 
   if (task_exists(tid_fish + pid)) {
+    chat_print(pid, g_prefix, "%L", pid, "GXP_CHAT_SMOKER_RELEASED");
+
+    gxp_set_player_data(pid, pd_ability_in_use, false);
     remove_task(tid_fish + pid);
+    remove_task(tid_give_xp + pid);
+
     return;
   }
 
@@ -86,8 +112,18 @@ public gxp_player_used_ability(pid)
     target >= 1 && target <= MAX_PLAYERS
     && GxpTeam:gxp_get_player_data(target, pd_team) == tm_survivor
   ) {
+    g_xp_granted[pid] = 0;
+
+    new name[MAX_NAME_LENGTH + 1];
+    get_user_name(target, name, charsmax(name));
+    chat_print(pid, g_prefix, "%L", pid, "GXP_CHAT_SMOKER_YOU_CAUGHT", name);
+
     new data[1]; data[0] = target;
     set_task_ex(0.1, "task_fish", tid_fish + pid, data, sizeof(data), SetTask_Repeat);
+    if (gxp_has_game_started())
+      set_task_ex(1.0, "task_give_xp", tid_give_xp + pid, data, sizeof(data), SetTask_Repeat);
+
+    gxp_set_player_data(pid, pd_ability_in_use, true);
   } else {
     new aim_pos[3];
     get_user_origin(pid, aim_pos, 3);
@@ -139,6 +175,7 @@ public task_fish(const data[1], tid)
   new pid_survivor = data[0];
 
   if (!is_user_alive(pid_survivor)) {
+    gxp_set_player_data(pid_survivor, pd_ability_in_use, false);
     remove_task(tid);
     return;
   }
@@ -168,4 +205,19 @@ public task_fish(const data[1], tid)
   ufx_te_beaments(
     pid_smoker, pid_survivor, g_spr_white, 0, 0.0, 0.1, 0.8, 0.1, {155, 155, 55}, 90, 10.0
   );
+}
+
+public task_give_xp(const data[1], tid)
+{
+  new pid_survivor = data[0];
+  if (!is_user_alive(pid_survivor)) {
+    remove_task(tid);
+    return;
+  }
+
+  new pid_smoker = tid - tid_give_xp;
+  gxp_give_xp(pid_smoker, 10, .desc = "smoker");
+  g_xp_granted[pid_smoker] += 10;
+  if (g_xp_granted[pid_smoker] >= 1000)
+    remove_task(tid);
 }

@@ -90,7 +90,7 @@ public gxp_player_used_ability(pid)
   new Float:vel[3];
   xs_vec_mul_scalar(aim_dist, 0.0035, vel);
 
-  eye_pos[2] -= 2;
+  eye_pos[2] -= 2; // Lower eyes slightly.
   ufx_te_spray(eye_pos, vel, g_spr_poison, 8, 70, 100, 5);
 
   new target;

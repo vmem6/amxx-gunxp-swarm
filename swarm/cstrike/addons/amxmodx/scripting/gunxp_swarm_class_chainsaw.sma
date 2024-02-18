@@ -74,6 +74,7 @@ public ham_takedamage_pre(victim, inflictor, attacker, Float:dmg, dmg_bits)
   if (
     victim != attacker
     && attacker >= 1 && attacker <= MAX_PLAYERS
+    && inflictor == attacker
     && _gxp_is_player_of_class(attacker, g_id, g_props)
     && get_user_weapon(attacker) == CSW_KNIFE
   ) {

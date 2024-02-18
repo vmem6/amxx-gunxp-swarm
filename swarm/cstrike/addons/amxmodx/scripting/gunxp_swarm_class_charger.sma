@@ -26,8 +26,6 @@ new g_props[GxpClass];
 
 new g_spr_white;
 
-new g_chargers;
-
 public plugin_precache()
 {
   g_spr_white = engfunc(EngFunc_PrecacheModel, "sprites/white.spr");
@@ -66,10 +64,8 @@ public plugin_init()
 
 public gxp_player_cleanup(pid)
 {
-  if (_gxp_is_player_of_class(pid, g_id, g_props)) {
+  if (_gxp_is_player_of_class(pid, g_id, g_props))
     stop_charge(pid);
-    --g_chargers;
-  }
 }
 
 public gxp_player_spawned(pid)
@@ -81,13 +77,11 @@ public gxp_player_spawned(pid)
 
   set_pev(pid, pev_gravity, g_props[cls_gravity]);
   gxp_user_set_model(pid, g_props);
-
-  ++g_chargers;
 }
 
 public gxp_player_used_ability(pid)
 {
-  if (g_chargers == 0 || !_gxp_is_player_of_class(pid, g_id, g_props))
+  if (!_gxp_is_player_of_class(pid, g_id, g_props))
     return;
 
   new Float:time = get_gametime();
@@ -115,6 +109,7 @@ public gxp_player_used_ability(pid)
   set_pev(pid, pev_maxspeed, float(g_charge_cruise_speed));
 
   gxp_set_player_data(pid, pd_ability_last_used, time);
+  gxp_set_player_data(pid, pd_ability_in_use, true);
 }
 
 public gxp_player_knife_slashed(pid)  { gxp_emit_sound(pid, "miss", g_id, g_props, CHAN_WEAPON); }
@@ -129,13 +124,13 @@ public gxp_player_died(pid)   { gxp_emit_sound(pid, "death", g_id, g_props, CHAN
 
 public fm_touch_post(ent, pid)
 {
-  if (g_chargers == 0 || !gxp_has_game_started() || gxp_has_round_ended())
+  if (!gxp_has_game_started() || gxp_has_round_ended())
     return;
 
   if (!pev_valid(ent) || !pev_valid(pid))
     return;
 
-  new classname[31 + 1];
+  static classname[31 + 1];
 
   pev(ent, pev_classname, classname, charsmax(classname));
   if (!equal(classname, "player") || GxpTeam:gxp_get_player_data(ent, pd_team) == tm_zombie)
@@ -146,19 +141,19 @@ public fm_touch_post(ent, pid)
     return;
 
   static Float:times[MAX_PLAYERS + 1];
-  new Float:time = get_gametime();
+  static Float:time; time = get_gametime();
 
   if (times[ent] - time > 0)
     return;
 
-  new Float:vel[3];
+  static Float:vel[3];
   pev(pid, pev_velocity, vel);
   if (xs_vec_len(vel) < float(g_smash_min_req_speed))
     return;
 
   /* Punch player back in the direction opposite to Charger. */
-  new Float:charger_origin[3];
-  new Float:survivor_origin[3];
+  static Float:charger_origin[3];
+  static Float:survivor_origin[3];
   pev(pid, pev_origin, charger_origin);
   pev(ent, pev_origin, survivor_origin);
 
@@ -175,7 +170,7 @@ public fm_touch_post(ent, pid)
   /* TODO: test this. */
   ufx_screenshake(ent, 5.0, 1.0, 2.0);
 
-  new Float:punchangle[3];
+  static Float:punchangle[3];
   punchangle[0] = random_float(25.0, 50.0);
   punchangle[1] = random_float(25.0, 50.0);
   punchangle[2] = 10.0;
@@ -220,4 +215,6 @@ public stop_charge(pid)
 
   UBITS_UNSET(g_charging, pid);
   set_pev(pid, pev_maxspeed, float(g_props[cls_speed]));
+
+  gxp_set_player_data(pid, pd_ability_in_use, false);
 }

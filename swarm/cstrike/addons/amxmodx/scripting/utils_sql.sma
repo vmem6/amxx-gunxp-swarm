@@ -25,6 +25,7 @@ new g_query[MAX_QUERY_LENGTH + 1];
 public plugin_natives()
 {
   register_library("utils_sql");
+
   register_native("usql_cache_info", "native_cache_info");
   register_native("usql_set_data", "native_set_data");
   register_native("usql_query", "native_query");
@@ -84,6 +85,7 @@ public bool:native_cache_info(plugin, argc)
   get_string(param_db, db, charsmax(db));
 
   g_plugins[plugin][plg_tuple] = SQL_MakeDbTuple(host, user, pass, db);
+  SQL_SetCharset(g_plugins[plugin][plg_tuple], "utf8");
   if (_:g_plugins[plugin][plg_tuple] != INVALID_HANDLE) {
     g_plugins[plugin][plg_query_fwd] = CreateOneForward(
       plugin,
@@ -99,19 +101,17 @@ public bool:native_cache_info(plugin, argc)
 public native_set_data(plugin, argc)
 {
   enum {
-    param_data = 1,
+    param_data    = 1,
     param_cleanup = 2
   };
 
   new Array:data = Array:get_param(param_data);
-  for (new i = 0; i != ArraySize(data); ++i) {
+  for (new i = 0; i != ArraySize(data); ++i)
     g_plugins[plugin][plg_data][i] = ArrayGetCell(data, i);
-  }
   g_plugins[plugin][plg_data_sz] = ArraySize(data);
 
-  if (bool:get_param(param_cleanup)) {
+  if (bool:get_param(param_cleanup))
     ArrayDestroy(data);
-  }
 }
 
 public native_query(plugin, argc)
@@ -125,15 +125,14 @@ public native_query(plugin, argc)
 
 public bool:native_create_table(plugin, argc)
 {
-  if (_:g_plugins[plugin][plg_tuple] == INVALID_HANDLE) {
+  if (_:g_plugins[plugin][plg_tuple] == INVALID_HANDLE)
     return false;
-  }
 
   enum {
-    param_table = 1,
-    param_columns = 2,
-    param_pkey = 3,
-    param_cleanup = 4
+    param_table     = 1,
+    param_columns   = 2,
+    param_pkey      = 3,
+    param_cleanup   = 4
   };
 
   new table[MAX_SQL_TABLE_NAME_LENGTH + 1];
@@ -149,11 +148,10 @@ public bool:native_create_table(plugin, argc)
     ArrayGetArray(columns, i, column);
 
     new def_val[MAX_SQL_COLUMN_VALUE_LENGTH + 1];
-    if (column[sc_type] == sct_int) {
+    if (column[sc_type] == sct_int)
       formatex(def_val, charsmax(def_val), "%d", strtol(column[sc_def_val]));
-    } else {
+    else
       formatex(def_val, charsmax(def_val), "^"%s^"", column[sc_def_val]);
-    }
 
     formatex(
       buf, charsmax(buf),
@@ -190,9 +188,8 @@ public bool:native_create_table(plugin, argc)
   /* Cache new table. */
   copy(g_plugins[plugin][plg_table], charsmax(g_plugins[][plg_table]), table);
 
-  if (bool:get_param(param_cleanup)) {
+  if (bool:get_param(param_cleanup))
     ArrayDestroy(columns);
-  }
 
   return true;
 }
@@ -212,7 +209,7 @@ public native_fetch(plugin, argc)
 
   enum {
     param_columns = 1,
-    param_cond = 2,
+    param_cond    = 2,
     param_cleanup = 3
   };
 
@@ -220,11 +217,10 @@ public native_fetch(plugin, argc)
 
   /* Populate columns. */
   new Array:columns = Array:get_param(param_columns);
-  if (columns == Invalid_Array) {
+  if (columns == Invalid_Array)
     add(g_query, charsmax(g_query), "* ");
-  } else {
+  else
     populate_field(columns, .outer_casing = false, .inner_casing = "`");
-  }
 
   /* Specify table. */
   add(g_query, charsmax(g_query), "FROM ");
@@ -240,16 +236,15 @@ public native_fetch(plugin, argc)
 
   exec_query(sq_fetch, plugin);
 
-  if (bool:get_param(param_cleanup)) {
+  if (bool:get_param(param_cleanup))
     ArrayDestroy(columns);
-  }
 }
 
 public native_insert(plugin, argc)
 {
   enum {
     param_columns = 1,
-    param_values = 2,
+    param_values  = 2,
     param_cleanup = 3
   };
 
@@ -264,9 +259,8 @@ public native_insert(plugin, argc)
 
   /* Populate columns. */
   new Array:columns = Array:get_param(param_columns);
-  if (ArraySize(columns) > 0) {
+  if (ArraySize(columns) > 0)
     populate_field(columns);
-  }
 
   /* Populate values. */
   add(g_query, charsmax(g_query), "VALUES ");
@@ -287,7 +281,7 @@ public native_update(plugin, argc)
     param_columns = 1,
     param_nvalues = 2,
     param_svalues = 3,
-    param_cond = 4,
+    param_cond    = 4,
     param_cleanup = 5
   };
 
@@ -347,9 +341,8 @@ public handle_query(failstate, Handle:query, error[], errnum, data[], sz, Float:
   if (fwd != INVALID_HANDLE) {
     new t_query = data[0];
     sz -= 2;
-    for (new i = 0; i != sz; ++i) {
+    for (new i = 0; i != sz; ++i)
       data[i] = data[i + 2];
-    }
     ExecuteForward(
       fwd, _, t_query, query, failstate == TQUERY_SUCCESS, error, errnum, PrepareArray(data, sz), sz
     );
@@ -364,9 +357,8 @@ exec_query(SQLQuery:query, plugin)
   new data[sizeof(g_plugins[][plg_data]) + 2];
   data[0] = _:query;
   data[1] = plugin;
-  for (new i = 0; i != g_plugins[plugin][plg_data_sz]; ++i) {
+  for (new i = 0; i != g_plugins[plugin][plg_data_sz]; ++i)
     data[i + 2] = g_plugins[plugin][plg_data][i];
-  }
   SQL_ThreadQuery(
     g_plugins[plugin][plg_tuple], "handle_query", g_query, data, g_plugins[plugin][plg_data_sz] + 2
   );
@@ -378,18 +370,18 @@ populate_field(
 {
   new buf[MAX_SQL_COLUMN_VALUE_LENGTH + 1];
 
-  if (outer_casing) {
+  if (outer_casing)
     add(g_query, charsmax(g_query), "(");
-  }
 
   for (new i = 0; i != ArraySize(src); ++i) {
-    if (inner_casing[0] != '^0') { add(g_query, charsmax(g_query), inner_casing); }
+    if (inner_casing[0] != '^0')
+      add(g_query, charsmax(g_query), inner_casing);
     ArrayGetString(src, i, buf, charsmax(buf));
     add(g_query, charsmax(g_query), buf);
-    if (inner_casing[0] != '^0') { add(g_query, charsmax(g_query), inner_casing); }
-    if (i != ArraySize(src) - 1) {
+    if (inner_casing[0] != '^0')
+      add(g_query, charsmax(g_query), inner_casing);
+    if (i != ArraySize(src) - 1)
       add(g_query, charsmax(g_query), sep);
-    }
   }
 
   if (outer_casing)

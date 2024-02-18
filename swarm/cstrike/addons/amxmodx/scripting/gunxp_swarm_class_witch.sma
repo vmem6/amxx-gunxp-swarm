@@ -32,6 +32,7 @@ public plugin_init()
   /* Forwards > FakeMeta */
 
   register_forward(FM_PlayerPreThink, "fm_playerprethink_pre");
+  register_forward(FM_PlayerPreThink, "fm_playerprethink_post", ._post = 1);
 
   /* Forwards > Ham */
 
@@ -89,6 +90,7 @@ public gxp_player_used_ability(pid)
   gxp_emit_sound(pid, "ability", g_id, g_props);
 
   gxp_set_player_data(pid, pd_ability_last_used, time);
+  gxp_set_player_data(pid, pd_ability_in_use, true);
 }
 
 public gxp_player_knife_slashed(pid)  { gxp_emit_sound(pid, "miss", g_id, g_props, CHAN_WEAPON); }
@@ -115,7 +117,7 @@ public fm_playerprethink_pre(pid)
 
 public fm_playerprethink_post(pid)
 {
-  if (UBITS_PCHECK(g_of_class, pid))
+  if (UBITS_PCHECK(g_of_class, pid) && UBITS_PCHECK(g_angry, pid))
     set_pev(pid, pev_velocity, g_vel);
 }
 
@@ -126,6 +128,7 @@ public ham_takedamage_pre(victim, inflictor, attacker, Float:dmg, dmg_bits)
   if (
     victim != attacker
     && attacker >= 1 && attacker <= MAX_PLAYERS
+    && inflictor == attacker
     && UBITS_PCHECK(g_of_class, attacker)
     && get_user_weapon(attacker) == CSW_KNIFE
     && UBITS_CHECK(g_angry, attacker)
@@ -157,4 +160,6 @@ public calm_down(pid)
 
   UBITS_UNSET(g_angry, pid);
   set_pev(pid, pev_maxspeed, float(g_props[cls_speed]));
+
+  gxp_set_player_data(pid, pd_ability_in_use, false);
 }

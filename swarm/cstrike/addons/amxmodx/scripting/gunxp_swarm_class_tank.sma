@@ -17,6 +17,9 @@
 new bool:g_exists;
 new Float:g_time_of_last;
 
+new bool:g_cleaned_up;
+new bool:g_init_spawn_handled;
+
 new g_hp_min;
 new g_hp_max;
 new g_hp_per_survivor;
@@ -51,7 +54,7 @@ public plugin_init()
 
   /* Setup */
 
-  g_time_of_last = get_gametime() - 90.0;
+  g_time_of_last = get_gametime() - 91.0;
 
   gxp_config_get_class("tank", g_props);
 
@@ -75,14 +78,21 @@ public plugin_init()
 public gxp_cleanup()
 {
   g_exists = false;
-  g_time_of_last = get_gametime() - 90.0;
+  g_time_of_last = get_gametime() - 91.0;
+
+  g_cleaned_up = true;
 
   ufm_remove_entities(ROCK_CLASSNAME);
 }
 
+public gxp_round_started(round)
+{
+  g_init_spawn_handled = false;
+}
+
 public gxp_player_cleanup(pid)
 {
-  if (_gxp_is_player_of_class(pid, g_id, g_props)) {
+  if (_gxp_is_player_of_class(pid, g_id, g_props) && !g_cleaned_up) {
     g_exists = false;
     g_time_of_last = get_gametime();
   }
@@ -93,8 +103,14 @@ public gxp_player_spawned(pid)
   if (!_gxp_is_player_of_class(pid, g_id, g_props))
     return;
 
+  g_exists = true;
+  g_cleaned_up = false;
+
   new alive_ct = get_playersnum_ex(GetPlayers_ExcludeDead | GetPlayers_MatchTeam, "CT");
-  set_pev(pid, pev_health, float(clamp(alive_ct*g_hp_per_survivor, g_hp_min, g_hp_max)));
+  g_props[cls_health] = clamp(alive_ct*g_hp_per_survivor, g_hp_min, g_hp_max);
+  gxp_config_set_class("tank", g_props);
+
+  set_pev(pid, pev_health, float(g_props[cls_health]));
   set_pev(pid, pev_gravity, g_props[cls_gravity]);
 
   client_cmd(0, "spk vox/danger");
@@ -103,7 +119,7 @@ public gxp_player_spawned(pid)
   get_user_name(pid, name, charsmax(name));
 
   for (new pid_r = 1; pid_r != MAX_PLAYERS + 1; ++pid_r) {
-    if (is_user_bot(pid_r))
+    if (is_user_bot(pid_r) || !is_user_connected(pid_r))
       continue;
 
     new colors[3];
@@ -258,8 +274,23 @@ public cb_gxp_is_required(pid, &bool:required)
 
   if (g_exists || get_playersnum_ex(GetPlayers_ExcludeHLTV) < 12) {
     required = false;
+  /* Try to pick a random TT on new round. */
+  } else if (!g_init_spawn_handled) {
+    new last_tt_pid = 0;
+    new tt_num = 0;
+
+    for (new pid_r = 1; pid_r != MAX_PLAYERS + 1; ++pid_r) {
+      if (is_user_connected(pid_r) && cs_get_user_team(pid_r) == CS_TEAM_T) {
+        last_tt_pid = pid_r;
+        ++tt_num;
+      }
+    }
+
+    if (random_num(1, 100) <= clamp(100/tt_num, 10, 100) || last_tt_pid == pid) {
+      required = true;
+      g_init_spawn_handled = true;
+    }
   } else if (get_gametime() - g_time_of_last > 90.0) {
-    g_exists = true;
     required = true;
   }
 }

@@ -29,6 +29,8 @@
  *   - remove `reset_player_data()`?
  */
 
+#define DEBUG
+
 #include <amxmodx>
 #include <amxmisc>
 #include <hamsandwich>
@@ -50,25 +52,10 @@
 #include <team_balancer>
 #include <team_balancer_skill>
 
+#include <utils_log>
 #include <utils_effects>
 #include <utils_text>
 #include <utils_offsets>
-
-#define DEBUG
-#if defined DEBUG
-  #define DEBUG_DIR "addons/amxmodx/logs/others/gunxp_swarm"
-  #define LOG(%0) log_to_file(g_log_filepath, %0)
-  #define LOG_LVL(%0) log_to_file(g_log_filepath_lvl, %0)
-  #define GET_INFO(%0) \
-    new _name[MAX_NAME_LENGTH + 1]; get_user_name(%0, _name, charsmax(_name)); \
-    new _sid = state_get_player_sid(%0)
-
-  new g_log_filepath[PLATFORM_MAX_PATH + 1];
-  new g_log_filepath_lvl[PLATFORM_MAX_PATH + 1];
-#else
-  #define LOG(%0) //
-	#define GET_INFO(%0) //
-#endif
 
 #define VALIDATE_PID(%0) 						\
 	new pid = get_param(param_pid);		\
@@ -77,6 +64,8 @@
 
 #define SOUND_LEVELLED_UP	"level_up_new.wav"
 #define SOUND_PRESTIGED 	"level_up_new.wav"
+
+native afk_is_in_godmode(pid);
 
 enum _:RegisteredClass
 {
@@ -90,7 +79,6 @@ enum (+= 1000)
 {
 	tid_respawn = 2367,
 	tid_game_start_countdown,
-	tid_afk_check,
 	tid_give_jump_bomb
 };
 
@@ -112,6 +100,22 @@ new const g_clcmds[][][32 + 1] =
 {
   { "/prs",    		"handle_say_prs" },
   { "/prestige", 	"handle_say_prs" }
+};
+
+new g_skill_levels[SkillLevels][SkillLevel] =
+{
+  { "L-",   0.0 },
+  { "L",   31.0 },
+  { "L+",  41.0 },
+  { "M-",  51.0 },
+  { "M",   61.0 },
+  { "M+",  71.0 },
+  { "H-",  86.0 },
+  { "H",  101.0 },
+  { "H+", 116.0 },
+  { "P-", 131.0 },
+  { "P",  146.0 },
+  { "P+", 161.0 }
 };
 
 new g_players[MAX_PLAYERS + 1][GxpPlayer];
@@ -146,6 +150,8 @@ new g_pcvar_xp_method;
 new g_pcvar_rounds_per_team;
 new g_pcvar_respawn_delay;
 
+new Float:g_skill_base;
+
 /* Resources */
 
 new g_spr_level_up;
@@ -162,6 +168,7 @@ new g_fwd_round_ended;
 new g_fwd_teams_swapped;
 
 new g_fwd_player_spawned;
+new g_fwd_player_killed;
 new g_fwd_player_cleanup;
 
 new g_fwd_player_used_ability;
@@ -193,8 +200,6 @@ new g_msgid_textmsg;
 new g_hudsync_tc;
 
 /* Miscellaneous */
-
-new g_afk_times[MAX_PLAYERS + 1];
 
 new g_prefix[_GXP_MAX_PREFIX_LENGTH + 1];
 
@@ -288,8 +293,10 @@ public plugin_init()
 
 	g_fwd_teams_swapped = CreateMultiForward("gxp_teams_swapped", ET_IGNORE);
 
-	g_fwd_player_spawned = CreateMultiForward("gxp_player_spawned", ET_IGNORE, FP_CELL);
-	g_fwd_player_cleanup = CreateMultiForward("gxp_player_cleanup", ET_IGNORE, FP_CELL);
+	g_fwd_player_spawned 	= CreateMultiForward("gxp_player_spawned", ET_IGNORE, FP_CELL);
+	g_fwd_player_killed 	=
+		CreateMultiForward("gxp_player_killed", ET_IGNORE, FP_CELL, FP_CELL, FP_CELL, FP_CELL);
+	g_fwd_player_cleanup 	= CreateMultiForward("gxp_player_cleanup", ET_IGNORE, FP_CELL);
 
 	g_fwd_player_used_ability 			=
 		CreateMultiForward("gxp_player_used_ability", ET_IGNORE, FP_CELL);
@@ -324,9 +331,9 @@ public plugin_init()
 	/* Forwards > Ham */
 
 	RegisterHam(Ham_TakeDamage, "player", "ham_player_takedamage_pre");
-	RegisterHam(Ham_TraceAttack, "player", "ham_player_traceattack_pre");
 	RegisterHam(Ham_Touch, "weaponbox", "ham_weaponbox_touch_pre");
 	RegisterHam(Ham_TakeDamage, "player", "ham_player_takedamage_post", .Post = 1);
+	RegisterHam(Ham_Killed, "player", "ham_player_killed_post", .Post = 1);
 	RegisterHam(Ham_Spawn, "player", "ham_player_spawn_post", .Post = 1);
 	RegisterHam(Ham_Item_Deploy, "weapon_knife", "ham_item_deploy_post", .Post = 1);
 	RegisterHam(Ham_Item_Deploy, "weapon_smokegrenade", "ham_item_deploy_post", .Post = 1);
@@ -344,10 +351,10 @@ public plugin_init()
 	/* Events */
 
 	register_event_ex("HLTV", "event_new_round", RegisterEvent_Global, "1=0", "2=0");
-	register_event_ex("DeathMsg", "event_deathmsg", RegisterEvent_Global);
 	register_event_ex("TeamInfo", "event_teaminfo", RegisterEvent_Global);
 	register_event_ex("ResetHUD", "event_resethud", RegisterEvent_Single);
 	register_event_ex("HideWeapon", "event_hideweapon", RegisterEvent_Single);
+	register_event_ex("WeapPickup", "event_weappickup", RegisterEvent_Single);
 
 	register_logevent("logevent_round_start", 2, "1=Round_Start");
 	register_logevent("logevent_round_end", 2, "1=Round_End");
@@ -358,6 +365,14 @@ public plugin_init()
 	register_clcmd("say", "clcmd_say");
 	register_clcmd("say_team", "clcmd_say");
 
+	/* Loggers */
+
+	ulog_register_logger("gxp_core", "gunxp_swarm");
+	ulog_register_logger("gxp_level", "gunxp_swarm");
+
+	ULOG("gxp_core", INFO, 0, "Plugin initialized.");
+	ULOG("gxp_level", INFO, 0, "Plugin initialized.");
+
 	/* Miscellaneous */
 
 	g_survivor_classes = ArrayCreate(RegisteredClass);
@@ -365,17 +380,11 @@ public plugin_init()
 
 	g_hudsync_tc = CreateHudSyncObj();
 
-#if defined DEBUG
-  new filename[20 + 1];
-
-  get_time("core_%Y_%m_%d.log", filename, charsmax(filename));
-  formatex(g_log_filepath, charsmax(g_log_filepath), "%s/%s", DEBUG_DIR, filename);
-
-  get_time("lvl_%Y_%m_%d.log", filename, charsmax(filename));
-  formatex(g_log_filepath_lvl, charsmax(g_log_filepath), "%s/%s", DEBUG_DIR, filename);
-#endif
-
-  LOG("[GXP:S:CORE::plugin_init] Loaded.");
+	new Array:levels = ArrayCreate(SkillLevel);
+	for (new i = 0; i != SkillLevels; ++i)
+		ArrayPushArray(levels, g_skill_levels[i]);
+	tb_set_skill_levels(levels);
+	ArrayDestroy(levels);
 }
 
 public plugin_cfg()
@@ -388,6 +397,8 @@ public plugin_cfg()
 
 	bind_pcvar_string(get_cvar_pointer("gxp_info_prefix"), g_prefix, charsmax(g_prefix));
 	fix_colors(g_prefix, charsmax(g_prefix));
+
+	bind_pcvar_float(get_cvar_pointer("tb_skill_base"), g_skill_base);
 }
 
 public plugin_end()
@@ -404,6 +415,7 @@ public plugin_end()
 	DestroyForward(g_fwd_teams_swapped);
 
 	DestroyForward(g_fwd_player_spawned);
+	DestroyForward(g_fwd_player_killed);
 	DestroyForward(g_fwd_player_cleanup);
 
 	DestroyForward(g_fwd_player_used_ability);
@@ -431,13 +443,16 @@ public client_putinserver(pid)
 	if (is_user_hltv(pid))
 		return;
 
-	if (is_user_bot(pid)) {
-		compute_skill(pid);
-		return;
-	}
-
 	reset_player_data(pid);
-	_gxp_sql_load_player_data(pid);
+
+	if (is_user_bot(pid)) {
+		gxp_ul_activate_free(pid);
+		gxp_ul_activate_newbie(pid);
+
+		compute_skill(pid);
+	} else {
+		_gxp_sql_load_player_data(pid);
+	}
 }
 
 public client_disconnected(pid, bool:drop, message[], maxlen)
@@ -447,13 +462,15 @@ public client_disconnected(pid, bool:drop, message[], maxlen)
 
 	ExecuteForward(g_fwd_player_cleanup, _, pid);
 
-	if (is_user_bot(pid))
-		return;
-
-	remove_task(pid + tid_afk_check);
+	g_players[pid][pd_ability_in_use] = false;
 
 	for (new i = 0; i != GxpUlClass; ++i)
 		ArrayDestroy(g_players[pid][pd_uls][i]);
+
+	TrieDestroy(g_players[pid][pd_kill_contributors]);
+
+	if (is_user_bot(pid))
+		return;
 
 	if (state_get_player_sid(pid) == 0 || get_user_time(pid) < 5 || !g_player_loaded[pid])
 		return;
@@ -461,18 +478,7 @@ public client_disconnected(pid, bool:drop, message[], maxlen)
 	if (g_players[pid][pd_remember_sel] == gxp_remember_sel_map)
 		g_players[pid][pd_remember_sel] = gxp_remember_sel_off;
 
-	new playtime = get_user_time(pid) - g_afk_times[pid];
-	g_players[pid][pd_stats][gxp_pstats_playtime] += playtime;
-
-#if defined DEBUG
-	new name[MAX_NAME_LENGTH + 1];
-	get_user_name(pid, name, charsmax(name));
-	LOG( \
-		"[GXP:S:CORE::client_disconnected] ^"%s^" disconnected having played for %d s \
-		(AFK time not included: %d s). [Total: %d s]", \
-		name, playtime, g_afk_times[pid], g_players[pid][pd_stats][gxp_pstats_playtime] \
-	);
-#endif // DEBUG
+	g_players[pid][pd_stats][gxp_pstats_playtime] += get_user_time(pid);
 
 	_gxp_sql_save_player_data(pid);
 }
@@ -488,34 +494,30 @@ public gxp_player_data_loaded(pid)
 
 	compute_skill(pid);
 
-	set_task_ex(1.0, "task_afk_check", pid + tid_afk_check, .flags = SetTask_Repeat);
-
 #if defined DEBUG
-	new name[MAX_NAME_LENGTH + 1];
-	get_user_name(pid, name, charsmax(name));
-	new sid = state_get_player_sid(pid);
-
 	new pwrs[GxpPower];
 	copy(pwrs, sizeof(pwrs), g_players[pid][pd_powers]);
 
 	new stats[GxpPlayerStats];
 	copy(stats, sizeof(stats), g_players[pid][pd_stats]);
 
-	LOG( \
-		"[GXP:S:CORE::gxp_player_data_loaded] [^"%s^" (%d/%d)] \
-		Primary: xc: %d; xb: %d; l: %d; ps: %d; pu: %d; pb: %d | \
-		Powers: s: %d; rc: %d; bh: %d; d: %d; g: %d; hr: %d; bx: %d; ed: %d; her: %d; \
-		sgr: %d; si: %d; fd: %d; jc: %d; jd: %d; zah: %d | \
-		Stats: k: %d; d: %d; h: %d; sui: %d; sur: %d; p: %d.", \
-		name, pid, sid, \
+	ULOG( \
+		"gxp_core", INFO, pid, \
+		"Loaded data for ^"@name^" (@id/%d). [AuthID: @authid] [IP: @ip] \
+		[Primary: xc: %d; xb: %d; l: %d; ps: %d; pu: %d; pb: %d] \
+		[Powers: s: %d; rc: %d; bh: %d; d: %d; g: %d; hr: %d; bx: %d; ed: %d; her: %d; \
+		sgr: %d; si: %d; fd: %d; jc: %d; jd: %d; zah: %d] \
+		[Stats: k: %d; wk: %.1f; d: %d; h: %d; sui: %d; sur: %d; p: %d; pc: %d; at: %d]", \
+		state_get_player_sid(pid), \
 		g_players[pid][pd_xp_curr], g_players[pid][pd_xp_bought], g_players[pid][pd_level], \
 		g_players[pid][pd_prs_stored], g_players[pid][pd_prs_used], g_players[pid][pd_prs_bought], \
 		pwrs[pwr_speed], pwrs[pwr_respawn_chance], pwrs[pwr_base_hp], pwrs[pwr_damage], \
 		pwrs[pwr_gravity], pwrs[pwr_hp_regen], pwrs[pwr_bonus_xp], pwrs[pwr_expl_dmg], \
 		pwrs[pwr_he_regen], pwrs[pwr_sg_regen], pwrs[pwr_shooting_interval], pwrs[pwr_fall_dmg], \
 		pwrs[pwr_jump_bomb_chance], pwrs[pwr_jump_bomb_dmg], pwrs[pwr_zm_add_health], \
-		stats[gxp_pstats_kills], stats[gxp_pstats_deaths], stats[gxp_pstats_hs], \
-		stats[gxp_pstats_suicides], stats[gxp_pstats_survivals], stats[gxp_pstats_playtime] \
+		stats[gxp_pstats_kills], stats[gxp_pstats_weighted_kills], stats[gxp_pstats_deaths], \
+		stats[gxp_pstats_hs], stats[gxp_pstats_suicides], stats[gxp_pstats_survivals], \
+		stats[gxp_pstats_playtime], stats[gxp_pstats_playtime_ct], stats[gxp_pstats_aggro_time] \
 	);
 #endif // DEBUG
 }
@@ -591,13 +593,13 @@ public ham_player_takedamage_pre(
 {
 	enum { param_dmg = 4 };
 
-	if (g_game_starting || g_round_ended)
+	if (!g_game_started || g_round_ended)
 		return HAM_SUPERCEDE;
 
 	if (id_attacker < 1 || id_attacker > MAX_PLAYERS)
 		return HAM_IGNORED;
 
-	if (is_frozen(id_attacker))
+	if (is_frozen(id_attacker) || afk_is_in_godmode(pid_victim))
 		return HAM_SUPERCEDE;
 
 	if (g_players[id_attacker][pd_team] == tm_zombie) {
@@ -622,55 +624,6 @@ public ham_player_takedamage_pre(
 
 		SetHamParamFloat(param_dmg, dmg*mult2);
 		return HAM_HANDLED;
-	}
-
-	return HAM_IGNORED;
-}
-
-public ham_player_traceattack_pre(
-	pid_victim, pid_attacker, Float:dmg, Float:dir[3], tr, dmg_type_bitsum
-)
-{
-	return HAM_IGNORED;
-
-	if (!g_game_started || g_round_ended)
-		return HAM_SUPERCEDE;
-
-	if (!(dmg_type_bitsum & DMG_BULLET))
-		return HAM_IGNORED;
-
-	if (!is_user_connected(pid_victim) || g_players[pid_victim][pd_team] != tm_zombie)
-		return HAM_IGNORED;
-
-	if (is_frozen(pid_attacker))
-		return HAM_SUPERCEDE;
-
-	static ammo_type;
-	ammo_type = _gxp_wpn_ammo_types[get_user_weapon(pid_attacker)];
-	if (ammo_type != -1) {
-		static Float:victim_origin[3];
-		static Float:attacker_origin[3];
-		pev(pid_victim, pev_origin, victim_origin);
-		pev(pid_attacker, pev_origin, attacker_origin);
-
-		if (get_distance_f(victim_origin, attacker_origin) <= 200.0) {
-			static Float:vel[3];
-			pev(pid_victim, pev_velocity, vel);
-
-		 	static Float:org_vec_z;
-		 	org_vec_z = vel[2];
-
-		 	xs_vec_mul_scalar(dir, dmg, dir);
-		 	xs_vec_mul_scalar(dir, 1.0, dir);
-		 	xs_vec_mul_scalar(dir, _gxp_ammo_kb_powers[ammo_type], dir);
-
-		 	xs_vec_add(dir, vel, vel);
-		 	vel[2] = org_vec_z;
-
-		 	set_pev(pid_victim, pev_velocity, vel);
-
-		 	return HAM_HANDLED;
-		}
 	}
 
 	return HAM_IGNORED;
@@ -707,18 +660,58 @@ public ham_weaponbox_touch_pre(wpn_box, id)
 	return HAM_IGNORED;
 }
 
-public ham_armoury_entity_touch_pre(id)
-{
-	server_print("spawn armoury");
-	return HAM_SUPERCEDE;
-}
-
 public ham_player_takedamage_post(
 	pid_victim, id_inflictor, id_attacker, Float:dmg, dmg_type_bitsum
 )
 {
-	if (g_game_starting || g_round_ended)
+	if (!g_game_started || g_round_ended)
 		return;
+
+	if (g_players[pid_victim][pd_team] == g_players[id_attacker][pd_team])
+		return;
+
+	if (afk_is_in_godmode(pid_victim))
+		return;
+
+	new Float:actual_dmg = dmg;
+
+	/* Cap damage to actual HP so there's no extraneous XP awarded, and no
+	 * additional weight of a kill to a contributor is awarded. */
+	new Float:hp;
+	pev(pid_victim, pev_health, hp);
+	if (hp < 0.0)
+		dmg -= floatabs(hp);
+
+	if (pid_victim != id_attacker && id_attacker >= 1 && id_attacker <= MAX_PLAYERS) {
+		new id_att_str[2 + 1];
+		num_to_str(id_attacker, id_att_str, charsmax(id_att_str));
+
+		new Float:stored_dmg = 0.0;
+		TrieGetCell(g_players[pid_victim][pd_kill_contributors], id_att_str, stored_dmg);
+		TrieSetCell(g_players[pid_victim][pd_kill_contributors], id_att_str, stored_dmg + dmg);
+
+#if defined DEBUG
+    static name[MAX_NAME_LENGTH + 1];
+    get_user_name(pid_victim, name, charsmax(name));
+    ULOG( \
+      "gxp_stats", INFO, id_attacker, \
+      "^"@name^" (@id/%d) damaged ^"%s^" (%d): %.1f dmg (total: %.1f). \
+      [Team(c/v): %d/%d] [HP: %.1f] [Max. HP: %.1f] [Contributors: %d]", \
+      state_get_player_sid(id_attacker), name, pid_victim, dmg, stored_dmg + dmg, \
+      get_user_team(id_attacker), get_user_team(pid_victim), hp, float(get_max_hp(pid_victim)), \
+      TrieGetSize(g_players[pid_victim][pd_kill_contributors]) \
+    );
+#endif // DEBUG
+	}
+
+	/* We handle some logic concerning user death here primarily because we need
+	 * to keep track of contributions accurately. If we handled them on `DeathMsg`
+	 * or `Ham_Killed` (which is, in reality, the same), we would lose the last
+	 * contribution; if we fetched the contributions on (pre) `Ham_TakeDamage`,
+	 * the damage dealt would be inaccurate since it is modified along the way
+	 * many times. */
+	if (!is_user_alive(pid_victim))
+		handle_user_death(pid_victim, id_attacker, actual_dmg);
 
 	if (GxpXpMethod:get_pcvar_num(g_pcvar_xp_method) != gxp_xp_dmg)
 		return;
@@ -726,54 +719,65 @@ public ham_player_takedamage_post(
 	if (pid_victim == id_attacker || (id_attacker < 1 || id_attacker > MAX_PLAYERS))
 		return;
 
-	if (g_players[pid_victim][pd_team] == g_players[id_attacker][pd_team])
-		return;
-
-	new class[GxpClass];
+	static class[GxpClass];
 	get_class(pid_victim, class);
 
-	/* Cap damage to actual HP so there's no extraneous XP awarded. */
-	new Float:hp;
-	pev(pid_victim, pev_health, hp);
-	if (hp < 0.0)
-		dmg -= floatabs(hp);
+	new Float:xp = dmg*class[cls_xp_when_killed]/class[cls_health];
+	if (!is_newbie(id_attacker))
+		xp *= 0.8; // -20%
 
-	new xp = floatround(dmg*class[cls_xp_when_killed]/class[cls_health]);
-	if (xp > 15000) {
-		GET_INFO(id_attacker);
-		LOG( \
-			"[GXP:S:CORE::ham_player_takedamage_post] [BUG-H] \
-			^"%s^" (%d/%d) would have received %d XP! [Damage: %.1f] [Victim: %s (%.1f HP)]", \
-			_name, id_attacker, _sid, xp, dmg, class[cls_title], hp \
+	if (xp > 10000.0) {
+		ULOG( \
+			"gxp_core", WARNING, id_attacker, \
+			"[BUG-H] ^"@name^" (@id/%d) would've received %d XP! [Damage: %.1f] [Victim: %s (%.1f HP)]", \
+			state_get_player_sid(id_attacker), xp, dmg, class[cls_title], hp \
 		);
 		return;
-	} else if (xp > 3000) {
-		GET_INFO(id_attacker);
-		LOG( \
-			"[GXP:S:CORE::ham_player_takedamage_post] [BUG-M] \
-			^"%s^" (%d/%d) received %d XP! [Damage: %.1f] [Victim: %s (%.1f HP)]", \
-			_name, id_attacker, _sid, xp, dmg, class[cls_title], hp \
+	} else if (xp > 2500.0) {
+		ULOG( \
+			"gxp_core", WARNING, id_attacker, \
+			"[BUG-M] ^"@name^" (@id/%d) received %d XP! [Damage: %.1f] [Victim: %s (%.1f HP)]", \
+			state_get_player_sid(id_attacker), xp, dmg, class[cls_title], hp \
 		);
 	}
 
 	new bonus_xp = 0;
 	new bonus_xp_lvl = g_players[id_attacker][pd_powers][pwr_bonus_xp];
 	if (bonus_xp_lvl > 0) {
-		bonus_xp = floatround(
-			dmg*gxp_power_get_delta(GxpPower:pwr_bonus_xp)*bonus_xp_lvl/class[cls_health],
-			floatround_ceil
-		);
-		if (bonus_xp > 3000) {
-			GET_INFO(id_attacker);
-			LOG( \
-				"[GXP:S:CORE::ham_player_takedamage_post] [BUG-H] \
-				^"%s^" (%d/%d) received %d bonus XP! [Damage: %.1f] [Victim: %s (%.1f HP)]", \
-				_name, id_attacker, _sid, bonus_xp, dmg, class[cls_title], hp \
+		/* For example, delta = 100, and lvl = 3, then scale = 100/100 * 3/10 = 0.3. */
+		new Float:scale = (gxp_power_get_delta(GxpPower:pwr_bonus_xp)/100.0)*(bonus_xp_lvl/10.0);
+		bonus_xp = floatround(xp*scale, floatround_ceil);
+		if (bonus_xp > 1500) {
+			ULOG( \
+				"gxp_core", WARNING, id_attacker, \
+				"[BUG-H] ^"@name^" (@id/%d) received %d bonus XP! [Damage: %.1f] [Victim: %s (%.1f HP)]", \
+				state_get_player_sid(id_attacker), bonus_xp, dmg, class[cls_title], hp \
 			);
 		}
 	}
 
-	give_xp(id_attacker, xp, bonus_xp, "bonus");
+	give_xp(id_attacker, floatround(xp), bonus_xp, bonus_xp > 0 ? "bonus" : "");
+}
+
+public ham_player_killed_post(pid_victim, id_attacker, shouldgib)
+{
+	fm_set_user_rendering(pid_victim, kRenderFxNone, 0, 0, 0, kRenderNormal, 0);
+
+	ExecuteForward(g_fwd_player_cleanup, _, pid_victim);
+
+	g_players[pid_victim][pd_ability_in_use] = false;
+
+	/* The victim was slayed, or they committed suicide through some means other
+	 * than fall damage. In either case, `ham_player_takedamage_post` will not be
+	 * invoked, and, consequently, neither will `handle_user_death`, so clear kill
+	 * contributors trie here. */
+	if (pid_victim == id_attacker) {
+		ULOG("gxp_stats", INFO, pid_victim, "Clearing kill contributors trie for ^"@name^" (@id).");
+		TrieClear(g_players[pid_victim][pd_kill_contributors]);
+	}
+
+	if (!g_round_ended && g_players[pid_victim][pd_team] == tm_zombie)
+		set_task_ex(get_pcvar_float(g_pcvar_respawn_delay), "task_respawn", pid_victim + tid_respawn);
 }
 
 public ham_player_spawn_post(pid)
@@ -793,12 +797,11 @@ public ham_player_spawn_post(pid)
 	/* By default, assume all classes have abilities which are ready to be used
 	 * the moment a player spawns. */
 	g_players[pid][pd_ability_available] = true;
+	g_players[pid][pd_ability_in_use] = false;
 
 	set_pev(pid, pev_health, float(get_max_hp(pid)));
 	set_pev(pid, pev_armorvalue, float(class[cls_armour]));
 	set_pev(pid, pev_maxspeed, float(class[cls_speed]));
-
-	fm_set_user_rendering(pid, kRenderFxNone);
 
 	if (g_players[pid][pd_team] == tm_zombie) {
 		new origin[3];
@@ -945,11 +948,21 @@ public event_new_round()
 	g_round_ended = false;
 	g_freeze_time = true;
 
-	if (g_game_starting && !task_exists(tid_game_start_countdown)) {
-		g_game_started = true;
-		g_game_starting = false;
-		g_gxp_round = 1;
-		ExecuteForward(g_fwd_game_started);
+	if (g_game_starting) {
+		/* Cleanup is usually deferred to round end but round restarts (either
+		 * because someone joins a team, teams are balanced, or for whatever other
+		 * reason) don't trigger a "Round_End" logevent, so we perform a general
+		 * cleanup on new round on such occasions (that happen only when the game is
+		 * starting). */
+		cleanup();
+
+		if (!task_exists(tid_game_start_countdown)) {
+			g_game_started = true;
+			g_game_starting = false;
+			g_gxp_round = 1;
+
+			ExecuteForward(g_fwd_game_started);
+		}
 	}
 
 	for (new pid = 1; pid != MAX_PLAYERS + 1; ++pid) {
@@ -959,61 +972,9 @@ public event_new_round()
 
 	if (task_exists(tid_give_jump_bomb))
 		remove_task(tid_give_jump_bomb);
-	set_task_ex(3.0, "task_give_jump_bomb", tid_give_jump_bomb);
+	set_task_ex(0.25, "task_give_jump_bomb", tid_give_jump_bomb);
 
 	ExecuteForward(g_fwd_round_started, _, g_gxp_round);
-}
-
-public event_deathmsg()
-{
-	enum {
-		data_killer = 1,
-		data_victim = 2
-	};
-
-	new pid_killer = read_data(data_killer);
-	new pid_victim = read_data(data_victim);
-
-	g_players[pid_victim][pd_round_kills] = 0;
-
-	if (pid_killer != pid_victim) {
-		++g_players[pid_killer][pd_round_kills];
-
-		if (GxpXpMethod:get_pcvar_num(g_pcvar_xp_method) == gxp_xp_kill) {
-			new class[GxpClass];
-			get_class(pid_victim, class);
-
-			new bonus_xp_lvl = g_players[pid_killer][pd_powers][pwr_bonus_xp];
-			if (bonus_xp_lvl > 0) {
-				give_xp(
-					pid_killer,
-					class[cls_xp_when_killed],
-					gxp_power_get_delta(GxpPower:pwr_bonus_xp)*bonus_xp_lvl,
-					"bonus"
-				);
-			} else {
-				give_xp(pid_killer, class[cls_xp_when_killed]);
-			}
-		}
-
-		if (g_multi_max_n > 0) {
-			new kills = g_players[pid_killer][pd_round_kills];
-			for (new i = g_multi_max_n; i > 0; --i) {
-				new kills_req = g_multi_kills_base + g_multi_kills_delta*(i - 1);
-				if (kills >= kills_req) {
-					new desc[10 + 1];
-					formatex(desc, charsmax(desc), "multi-%d", kills_req);
-					give_xp(pid_killer, g_multi_xp_base + g_multi_xp_delta*(i - 1), .desc = desc);
-					break;
-				}
-			}
-		}
-	}
-
-	ExecuteForward(g_fwd_player_cleanup, _, pid_victim);
-
-	if (g_players[pid_victim][pd_team] == tm_zombie)
-		set_task_ex(get_pcvar_float(g_pcvar_respawn_delay), "task_respawn", pid_victim + tid_respawn);
 }
 
 public event_teaminfo()
@@ -1079,6 +1040,13 @@ public event_hideweapon(pid)
 		set_pdata_cbase(pid, UXO_P_CLIENT_ACTIVE_ITEM, FM_NULLENT);
 }
 
+public event_weappickup(pid)
+{
+	enum { data_wid = 1 };
+	if (read_data(data_wid) != CSW_KNIFE)
+		emit_sound(pid, CHAN_ITEM, "items/gunpickup2.wav", VOL_NORM, ATTN_NORM, 0, PITCH_NORM);
+}
+
 public logevent_round_start()
 {
 	g_freeze_time = false;
@@ -1086,9 +1054,6 @@ public logevent_round_start()
 
 public logevent_round_end()
 {
-	if (g_game_starting)
-		return;
-
 	static bool:first_round = true;
 	if (first_round) {
 		g_game_starting = true;
@@ -1097,7 +1062,6 @@ public logevent_round_end()
 			1.0, "task_start_countdown",
 			tid_game_start_countdown, .flags = SetTask_RepeatTimes, .repeat = 30
 		);
-		return;
 	}
 
 	/* We postpone the work of actually ending the round a bit to let some powers
@@ -1105,7 +1069,7 @@ public logevent_round_end()
 	 * `g_round_ending` is, conversely, used to prevent certain other powers from
 	 * executing (such as respawn). */
 	g_round_ending = true;
-	set_task_ex(0.1, "task_end_round");
+	set_task_ex(0.25, "task_end_round");
 }
 
 /* Client commands */
@@ -1146,20 +1110,11 @@ public handle_say_prs(pid)
 		return;
 	}
 
-#if defined DEBUG
-		GET_INFO(pid);
-
-		new ip[MAX_IP_LENGTH + 1];
-		get_user_ip(pid, ip, charsmax(ip), .without_port = true);
-
-		new authid[MAX_AUTHID_LENGTH + 1];
-		get_user_authid(pid, authid, charsmax(authid));
-
-		LOG_LVL( \
-			"^"%s^" (%d/%d) prestiged. [PRS: %d] [IP: %s] [AuthID: %s]", \
-			_name, pid, _sid, g_players[pid][pd_prs_stored] + 1, ip, authid \
-		);
-#endif // DEBUG
+	ULOG( \
+		"gxp_level", INFO, pid, \
+		"^"@name^" (@id/%d) prestiged. [PRS: %d] [IP: @ip] [AuthID: @authid]", \
+		state_get_player_sid(pid), g_players[pid][pd_prs_stored] + 1 \
+	);
 
 	++g_players[pid][pd_prs_stored];
 	ExecuteForward(g_fwd_player_attempted_prs, _, pid, true);
@@ -1226,6 +1181,8 @@ public task_start_countdown()
 
 public task_respawn(tid)
 {
+	if (g_round_ended)
+		return;
 	new pid = tid - tid_respawn;
 	if (is_user_connected(pid) && !is_user_alive(pid) && g_players[pid][pd_team] == tm_zombie) {
 		++g_players[pid][pd_respawn_count];
@@ -1235,6 +1192,11 @@ public task_respawn(tid)
 
 public task_end_round()
 {
+	cleanup();
+
+	if (g_game_starting)
+		return;
+
 	g_round_ending = false;
 	g_round_ended = true;
 
@@ -1254,13 +1216,6 @@ public task_end_round()
 	}
 
 	ExecuteForward(g_fwd_round_ended, _, g_gxp_round);
-	ExecuteForward(g_fwd_cleanup);
-
-	for (new pid = 1; pid != MAX_PLAYERS + 1; ++pid) {
-		if (g_players[pid][pd_team] == tm_unclassified)
-			continue;
-		ExecuteForward(g_fwd_player_cleanup, _, pid);
-	}
 
 	if (g_gxp_round++ == get_pcvar_num(g_pcvar_rounds_per_team)) {
 		g_gxp_round = 1;
@@ -1290,7 +1245,7 @@ public task_give_jump_bomb()
 	for (new pid = 1; pid != MAX_PLAYERS + 1; ++pid) {
 		if (!is_user_connected(pid) || is_user_bot(pid) || is_user_hltv(pid))
 			continue;
-		if (g_players[pid][pd_team] == tm_zombie)
+		if (g_players[pid][pd_team] == tm_zombie && is_user_alive(pid))
 			ArrayPushCell(zombies, pid);
 		++pnum;
 	}
@@ -1308,15 +1263,79 @@ public task_give_jump_bomb()
 	ArrayDestroy(zombies);
 }
 
-native is_afk(pid);
-public task_afk_check(tid)
-{
-	new pid = tid - tid_afk_check;
-	if (is_afk(pid))
-		++g_afk_times[pid];
-}
-
 /* Utilities */
+
+handle_user_death(pid, pid_killer, Float:death_dmg)
+{
+	/* Gather all kill contributors. */
+
+	new Array:contributors = ArrayCreate(GxpKillContributor);
+
+	/* Only consider contributions when the final blow dealt less than the
+	 * victims' max. HP. Otherwise, the contributions don't matter, since the
+	 * killer would have killed the victim either way. */
+	if (death_dmg	< get_max_hp(pid)) {
+		new TrieIter:iter = TrieIterCreate(g_players[pid][pd_kill_contributors]);
+		new kc[GxpKillContributor];
+		for (; TrieIterGetCell(iter, kc[gxp_kc_dmg]); TrieIterNext(iter)) {
+			new pid_str[2 + 1];
+			TrieIterGetKey(iter, pid_str, charsmax(pid_str));
+			kc[gxp_kc_pid] = str_to_num(pid_str);
+			ArrayPushArray(contributors, kc);
+		}
+		TrieIterDestroy(iter);
+	}
+	TrieClear(g_players[pid][pd_kill_contributors]);
+
+	new bool:hs = get_pdata_int(pid, UXO_LAST_HIT_GROUP, UXO_LINUX_DIFF_MONSTER) == HIT_HEAD;
+	ExecuteForward(g_fwd_player_killed, _, pid, pid_killer, hs, contributors);
+
+	ArrayDestroy(contributors);
+
+	/* Award XP, if necessary. */
+
+	if (pid_killer != pid && pid_killer >= 1 && pid_killer <= MAX_PLAYERS) {
+		++g_players[pid_killer][pd_round_kills];
+
+		if (GxpXpMethod:get_pcvar_num(g_pcvar_xp_method) == gxp_xp_kill) {
+			new class[GxpClass];
+			get_class(pid, class);
+
+			new bonus_xp_lvl = g_players[pid_killer][pd_powers][pwr_bonus_xp];
+			if (bonus_xp_lvl > 0) {
+				give_xp(
+					pid_killer,
+					class[cls_xp_when_killed],
+					gxp_power_get_delta(GxpPower:pwr_bonus_xp)*bonus_xp_lvl,
+					"bonus"
+				);
+			} else {
+				give_xp(pid_killer, class[cls_xp_when_killed]);
+			}
+		}
+
+		if (g_multi_max_n > 0) {
+			new kills = g_players[pid_killer][pd_round_kills];
+			for (new i = g_multi_max_n; i > 0; --i) {
+				new kills_req = g_multi_kills_base + g_multi_kills_delta*(i - 1);
+				if (kills >= kills_req) {
+					new desc[10 + 1];
+					formatex(desc, charsmax(desc), "multi-%d", kills_req);
+					give_xp(pid_killer, g_multi_xp_base + g_multi_xp_delta*(i - 1), .desc = desc);
+					break;
+				}
+			}
+		}
+	}
+
+	g_players[pid][pd_round_kills] = 0;
+
+	/* Re-compute internal skills. */
+
+	compute_skill(pid, .renew_actual_skill = false);
+	if (pid != pid_killer)
+		compute_skill(pid_killer, .renew_actual_skill = false);
+}
 
 pick_class(pid)
 {
@@ -1396,20 +1415,11 @@ set_xp(pid, xp_new, bool:decrease_lvl = false)
 		ufx_te_explosion(origin, g_spr_level_up, 3.0, 15, ufx_explosion_nosound);
 		emit_sound(pid, CHAN_ITEM, SOUND_LEVELLED_UP, 1.0, ATTN_NORM, 0, PITCH_NORM);
 
-#if defined DEBUG
-		GET_INFO(pid);
-
-		new ip[MAX_IP_LENGTH + 1];
-		get_user_ip(pid, ip, charsmax(ip), .without_port = true);
-
-		new authid[MAX_AUTHID_LENGTH + 1];
-		get_user_authid(pid, authid, charsmax(authid));
-
-		LOG_LVL( \
-			"^"%s^" (%d/%d) reached level %d. [XP: %d] [IP: %s] [AuthID: %s]", \
-			_name, pid, _sid, lvl, xp, ip, authid \
+		ULOG( \
+			"gxp_level", INFO, pid, \
+			"^"@name^" (@id/%d) reached level %d. [XP: %d] [IP: @ip] [AuthID: @authid]", \
+			state_get_player_sid(pid), lvl, xp \
 		);
-#endif // DEBUG
 
 		ExecuteForward(g_fwd_player_levelled_up, _, pid, old_lvl, lvl);
 	} else if (old_lvl > lvl) {
@@ -1439,6 +1449,10 @@ take_xp(pid, xp, bool:decrease_lvl)
 	set_xp(pid, g_players[pid][pd_xp_curr] - xp, decrease_lvl);
 }
 
+native bool:have_force(pid);
+native bool:have_gas(pid);
+native bool:have_pipe(pid);
+
 suit_up(pid, bool:bypass_remember_sel = false)
 {
 	fm_strip_user_weapons(pid);
@@ -1448,7 +1462,17 @@ suit_up(pid, bool:bypass_remember_sel = false)
 		fm_give_item(pid, "weapon_flashbang");
 		fm_give_item(pid, "weapon_flashbang");
 		fm_give_item(pid, "weapon_hegrenade");
-		fm_give_item(pid, "weapon_smokegrenade");
+
+		/* Don't give freeze nade when there are < 4 players. */
+		if (!have_force(pid) && !have_gas(pid) && !have_pipe(pid)) {
+			new total_players =
+				get_playersnum_ex(GetPlayers_ExcludeHLTV | GetPlayers_MatchTeam, "TERRORIST")
+				+ get_playersnum_ex(GetPlayers_ExcludeHLTV | GetPlayers_MatchTeam, "CT");
+			if (total_players >= 4)
+				fm_give_item(pid, "weapon_smokegrenade");
+		} else {
+			fm_give_item(pid, "weapon_smokegrenade");
+		}
 
 		if (bypass_remember_sel || g_players[pid][pd_remember_sel] != gxp_remember_sel_off) {
 			if (g_players[pid][pd_level] >= _GXP_SECN_GUN_COUNT)
@@ -1480,39 +1504,60 @@ give_gun(pid, gun_id)
 
 	fm_give_item(pid, _gxp_internal_gun_names[gun_id]);
 	cs_set_user_bpammo(pid, _gxp_weapon_ids[gun_id], _gxp_bpammo[gun_id]);
-
-	emit_sound(pid, CHAN_ITEM, "items/gunpickup2.wav", VOL_NORM, ATTN_NORM, 0, PITCH_NORM);
 }
 
-compute_skill(pid)
+compute_skill(pid, bool:renew_actual_skill = true)
 {
   if (!is_user_connected(pid) || is_user_hltv(pid))
   	return;
 
   if (is_user_bot(pid)) {
-  	tb_set_player_skill(pid, random_float(10.0, 400.0));
-  	return;
+		g_players[pid][pd_skill] = random_float(10.0, 400.0);
+		if (renew_actual_skill)
+			tb_set_player_skill(pid, g_players[pid][pd_skill]);
+		return;
   }
 
-  new kills 	= g_players[pid][pd_stats][gxp_pstats_kills];
-  new deaths 	= g_players[pid][pd_stats][gxp_pstats_deaths];
-  new hs 			= g_players[pid][pd_stats][gxp_pstats_hs];
+  new kills 				= g_players[pid][pd_stats][gxp_pstats_kills];
+  new Float:wkills	= g_players[pid][pd_stats][gxp_pstats_weighted_kills];
+  new deaths 				= g_players[pid][pd_stats][gxp_pstats_deaths];
+  new hs 						= g_players[pid][pd_stats][gxp_pstats_hs];
+  new playtime_ct		= g_players[pid][pd_stats][gxp_pstats_playtime_ct] + 1; // + 1 to avoid div by 0
+  new aggro_time		= g_players[pid][pd_stats][gxp_pstats_aggro_time];
+  new prs_s 				= g_players[pid][pd_prs_stored];
+  new prs_u 				= g_players[pid][pd_prs_used];
+  new prs_b 				= g_players[pid][pd_prs_bought];
 
-  if (kills == 0) {
-  	tb_set_player_skill(pid, 0.0);
+  if (kills == 0 || deaths == 0) {
+  	g_players[pid][pd_skill] = g_skill_base + float(kills);
+  	if (renew_actual_skill)
+  		tb_set_player_skill(pid, float(kills));
   	return;
-  } else if (deaths == 0) {
-  	tb_set_player_skill(pid, float(kills*2));
-  	return;
-  }
+	}
 
-  tb_set_player_skill(
-  	pid,
-		0.4*(1.0*kills/deaths)*100
-			+ 0.1*(1.0*hs/kills)*100
-			+ 0.4*g_players[pid][pd_prs_used]
-			+ 0.1*(g_players[pid][pd_prs_used] - g_players[pid][pd_prs_bought])
-	);
+  new Float:skill =
+  	/* [TIME/ABILITY] Helps to differentiate new players from established ones. */
+  	floatclamp(0.005*(kills + hs), 0.0, 30.0) +
+  	/* [TIME/ABILITY] Helps to differentiate safe players from aggressive ones. */
+  	0.375*aggro_time/playtime_ct*100 +
+  	/* [ABILITY] Estimates players ability. */
+  	0.425*wkills/deaths*100 +
+  	/* [ABILITY] Further narrows it down. */
+  	0.2*hs/kills*100 +
+  	/* [STRENGTH/ABILITY] Accounts for prestige influence on gameplay. */
+  	0.4*prs_u +
+  	/* [STRENGTH/ABILITY] Accentuates the skill component of earned prestiges. */
+  	0.1*(prs_u - prs_b);
+
+  if (renew_actual_skill)
+	  tb_set_player_skill(pid, skill);
+
+  /* We maintain an internal skill rating (SR) that doesn't affect balancing in
+   * order to accomodate dynamic weighted parameter computations. If the actual
+   * skill rating would be constantly updated, it would introduce instabilities,
+   * where new players would sometimes gain upwards of 200-300 SR, and
+   * consequently distort the balance. */
+  g_players[pid][pd_skill] = g_skill_base + skill;
 }
 
 reset_player_data(pid)
@@ -1529,8 +1574,11 @@ reset_player_data(pid)
   g_players[pid][pd_secondary_gun]			= 0;
   g_players[pid][pd_remember_sel]				= gxp_remember_sel_off;
   g_players[pid][pd_ability_last_used]	= 0.0;
+  g_players[pid][pd_ability_in_use] 		= false;
   g_players[pid][pd_respawn_count]			= 0;
   g_players[pid][pd_round_kills]				= 0;
+  g_players[pid][pd_kill_contributors]	= TrieCreate();
+  g_players[pid][pd_skill]							= g_skill_base;
 
   arrayset(g_players[pid][pd_powers], 0, _:GxpPower);
   for (new i = 0; i != GxpUlClass; ++i)
@@ -1538,8 +1586,6 @@ reset_player_data(pid)
   arrayset(g_players[pid][pd_stats], 0, _:GxpPlayerStats);
 
   g_player_loaded[pid] = false;
-
-  g_afk_times[pid] = 0;
 }
 
 transfer_player(pid, GxpTeam:team)
@@ -1600,12 +1646,21 @@ get_max_hp(pid)
 
 bool:is_newbie(pid)
 {
-#define NEWBIE_MAX_PRS 			0
-#define NEWBIE_MAX_USED_PRS 0
-#define NEWBIE_MAX_XP 			699999
-	return g_players[pid][pd_prs_stored] <= NEWBIE_MAX_PRS
-		&& g_players[pid][pd_prs_used] <= NEWBIE_MAX_USED_PRS
-		&& g_players[pid][pd_xp_curr] <= NEWBIE_MAX_XP;
+#define NEWBIE_MAX_PRS 2
+	return g_players[pid][pd_prs_stored] + g_players[pid][pd_prs_used] <= NEWBIE_MAX_PRS;
+}
+
+cleanup()
+{
+	ExecuteForward(g_fwd_cleanup);
+
+	for (new pid = 1; pid != MAX_PLAYERS + 1; ++pid) {
+		if (!is_user_connected(pid) || g_players[pid][pd_team] == tm_unclassified)
+			continue;
+		ExecuteForward(g_fwd_player_cleanup, _, pid);
+		TrieClear(g_players[pid][pd_kill_contributors]);
+		g_players[pid][pd_ability_in_use] = false;
+	}
 }
 
 /* Natives */
@@ -1752,10 +1807,14 @@ public native_register_class(plugin, argc)
 public native_give_xp(plugin, argc)
 {
 	enum {
-		param_pid = 1,
-		param_xp	= 2
+		param_pid 			= 1,
+		param_xp				= 2,
+		param_bonus_xp 	= 3,
+		param_desc 			= 4
 	};
-	give_xp(get_param(param_pid), get_param(param_xp));
+	new desc[64 + 1];
+	get_string(param_desc, desc, charsmax(desc));
+	give_xp(get_param(param_pid), get_param(param_xp), get_param(param_bonus_xp), desc);
 }
 
 public native_take_xp(plugin, argc)

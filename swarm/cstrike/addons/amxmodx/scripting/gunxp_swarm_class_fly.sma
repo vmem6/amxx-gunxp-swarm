@@ -128,6 +128,8 @@ public gxp_player_used_ability(pid)
 
     uanim_play(pid, ANIM_DURATION_PREPARE, ANIM_FRAME_RATE_PREPARE, anim_seq_prepare);
     set_task_ex(ANIM_DURATION_PREPARE, "task_liftoff", tid_liftoff + pid);
+
+    gxp_set_player_data(pid, pd_ability_in_use, true);
   }
 }
 
@@ -238,4 +240,5 @@ rest(pid)
   UBITS_PUNSET(g_in_descent, pid);
 
   gxp_set_player_data(pid, pd_ability_last_used, get_gametime());
+  gxp_set_player_data(pid, pd_ability_in_use, false);
 }

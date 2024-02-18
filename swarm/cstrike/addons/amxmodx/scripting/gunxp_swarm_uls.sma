@@ -248,13 +248,36 @@ deactivate(pid)
 
     for (new j = 0; j != ArraySize(player_uls[ul_cls]); ++j) {
       get_ul_by_id(ArrayGetCell(player_uls[ul_cls], j), ul);
-      new ul_wid = ul[gxp_ul_weapon_id];
 
-      /* Reset clip and bpammo of weapons in inventory. */
-      new wpn_ent = fm_get_user_weapon_entity(pid, ul_wid);
-      if (pev_valid(wpn_ent)) {
-        set_pdata_int(wpn_ent, UXO_I_CLIP, _gxp_wpn_default_clip[ul_wid]);
-        cs_set_user_bpammo(pid, ul_wid, _gxp_wpn_default_bpammo[ul_wid]);
+      new ul_wid = ul[gxp_ul_weapon_id];
+      new bool:has_ammo = false;
+
+      static const no_ammo_wpns[] = {
+        CSW_NONE,
+        CSW_HEGRENADE,
+        CSW_C4,
+        CSW_SMOKEGRENADE,
+        CSW_FLASHBANG,
+        CSW_KNIFE,
+        CSW_VEST,
+        CSW_VESTHELM,
+        CSW_SHIELDGUN,
+      };
+
+      for (new i = 0; i != sizeof(no_ammo_wpns); ++i) {
+        if (ul_wid == no_ammo_wpns[i]) {
+          has_ammo = false;
+          break;
+        }
+      }
+
+      if (has_ammo) {
+        /* Reset clip and bpammo of weapons in inventory. */
+        new wpn_ent = fm_get_user_weapon_entity(pid, ul_wid);
+        if (pev_valid(wpn_ent)) {
+          set_pdata_int(wpn_ent, UXO_I_CLIP, _gxp_wpn_default_clip[ul_wid]);
+          cs_set_user_bpammo(pid, ul_wid, _gxp_wpn_default_bpammo[ul_wid]);
+        }
       }
 
       /* Re-deploy weapon if it's currently equipped. */

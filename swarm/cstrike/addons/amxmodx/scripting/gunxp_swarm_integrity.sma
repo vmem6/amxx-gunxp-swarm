@@ -1,6 +1,10 @@
+#define DEBUG
+
 #include <amxmodx>
 
 #include <gunxp_swarm>
+
+#include <utils_log>
 
 enum (+= 1000)
 {
@@ -11,6 +15,10 @@ public plugin_init()
 {
   register_plugin(_GXP_SWARM_INTEGRITY_PLUGIN, _GXP_SWARM_VERSION, _GXP_SWARM_AUTHOR);
   register_dictionary(_GXP_SWARM_DICTIONARY);
+
+  /* Logger */
+
+  ulog_register_logger("gxp_integrity", "gunxp_swarm");
 }
 
 /* Forwards > Client */
@@ -43,5 +51,10 @@ public callback_cvar_query(pid, const cvar[], const value[], const param[])
     new msg[64 + 1];
     formatex(msg, charsmax(msg), "%L", pid, "GXP_CONSOLE_BAD_CVAR_INT", cvar, val, 1);
     server_cmd("kick #%d %s", get_user_userid(pid), msg);
+    ULOG( \
+      "gxp_integrity", INFO, pid, \
+      "^"@name^" was kicked due to a CVar (gl_fog) violation (is: %d; must be: 1). \
+      [AuthID: @authid] [IP: @ip]", val \
+    );
   }
 }

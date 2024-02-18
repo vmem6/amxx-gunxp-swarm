@@ -44,7 +44,6 @@ public gxp_player_spawned(pid)
   if (!_gxp_is_player_of_class(pid, g_id, g_props))
     return;
 
-  gxp_set_player_data(pid, pd_ability_available, false);
   set_pev(pid, pev_gravity, g_props[cls_gravity]);
   gxp_user_set_model(pid, g_props);
 }
@@ -61,8 +60,12 @@ public gxp_player_died(pid)   { gxp_emit_sound(pid, "death", g_id, g_props, CHAN
 
 public fm_touch_post(ent, pid)
 {
-  if (is_user_alive(pid) && _gxp_is_player_of_class(pid, g_id, g_props))
+  if (is_user_alive(pid) && _gxp_is_player_of_class(pid, g_id, g_props)) {
+    // static classname[32 + 1];
+    // pev(ent, pev_classname, classname, charsmax(classname));
+    // server_print("touching: %s (%d)", classname, ent);
     pev(pid, pev_origin, g_touch_origin[pid]);
+  }
 }
 
 public fm_playerprethink_post(pid)
@@ -73,8 +76,10 @@ public fm_playerprethink_post(pid)
   static button;
   button = pev(pid, pev_button);
 
-  if (!(button & IN_USE) || (pev(pid, pev_flags) & FL_ONGROUND))
+  if (!(button & IN_USE) || (pev(pid, pev_flags) & FL_ONGROUND)) {
+    // gxp_set_player_data(pid, pd_ability_in_use, false);
     return;
+  }
 
   static Float:origin[3];
   pev(pid, pev_origin, origin);
@@ -87,6 +92,8 @@ public fm_playerprethink_post(pid)
       velocity_by_aim(pid, -g_climb_speed, vel);
     set_pev(pid, pev_velocity, vel);
   }
+
+  // gxp_set_player_data(pid, pd_ability_in_use, true);
 }
 
 /* Forwards > Ham */

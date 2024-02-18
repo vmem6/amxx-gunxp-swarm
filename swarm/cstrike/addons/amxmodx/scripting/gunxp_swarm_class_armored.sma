@@ -73,14 +73,14 @@ public gxp_player_died(pid)   { gxp_emit_sound(pid, "death", g_id, g_props, CHAN
 
 public fm_playerprethink_pre(pid)
 {
-  if (UBITS_PCHECK(g_of_class, pid) && !(pev(pid, pev_flags) & FL_ONGROUND))
+  if (UBITS_PCHECK(g_of_class, pid) && (pev(pid, pev_flags) & FL_ONGROUND))
     pev(pid, pev_velocity, g_vel);
   return HAM_IGNORED;
 }
 
 public fm_playerprethink_post(pid)
 {
-  if (UBITS_PCHECK(g_of_class, pid) && !(pev(pid, pev_flags) & FL_ONGROUND))
+  if (UBITS_PCHECK(g_of_class, pid) && (pev(pid, pev_flags) & FL_ONGROUND))
     set_pev(pid, pev_velocity, g_vel);
 }
 

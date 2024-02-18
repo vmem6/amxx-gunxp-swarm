@@ -3,6 +3,8 @@
  *   - split this into separate plugins for: guns, powers, unlocks.
  */
 
+#define DEBUG
+
 #include <amxmodx>
 #include <amxmisc>
 #include <hamsandwich>
@@ -18,6 +20,7 @@
 #include <team_balancer_skill>
 
 #include <utils_menu>
+#include <utils_log>
 #include <utils_bits>
 #include <utils_text>
 
@@ -99,8 +102,6 @@ new g_chose_once;
 new g_chose_primary;
 new g_chose_secondary;
 
-new g_spec_target[MAX_PLAYERS + 1];
-
 new g_hudsync_tl;
 new g_hudsync_tr;
 new g_hudsync_bl;
@@ -125,7 +126,7 @@ public plugin_init()
 
   /* Events */
 
-  register_event_ex("SpecHealth2", "event_spechealth2", RegisterEvent_Single);
+  register_event_ex("TextMsg", "event_textmsg", RegisterEvent_Single, "2&#Spec_Mode");
 
   /* Client commands */
 
@@ -140,6 +141,8 @@ public plugin_init()
   g_hudsync_bl = CreateHudSyncObj();
   for (new i = 0; i != sizeof(g_hudsync_xp); ++i)
     g_hudsync_xp[i] = CreateHudSyncObj();
+
+  ulog_register_logger("gxp_ui", "gunxp_swarm");
 }
 
 public plugin_cfg()
@@ -616,15 +619,22 @@ public gxp_player_data_loaded(pid)
 
 /* Events */
 
-public event_spechealth2(pid)
+public event_textmsg(pid)
 {
-  enum { data_target = 2 };
-  if (!g_spec_target[pid])
-    set_task_ex(1.0, "task_show_spec_hud", pid + tid_show_spec_hud, .flags = SetTask_Repeat);
-  new target = read_data(data_target);
-  if (!target)
+  enum { data_msg = 2 };
+
+  if (is_user_bot(pid) || !is_user_connected(pid))
+    return;
+
+  new spec_mode[11 + 1];
+  read_data(data_msg, spec_mode, charsmax(spec_mode));
+  
+  if (equal(spec_mode, "#Spec_Mode2") || equal(spec_mode, "#Spec_Mode4")) {
+    if (!task_exists(pid + tid_show_spec_hud))
+      set_task_ex(1.0, "task_show_spec_hud", pid + tid_show_spec_hud, .flags = SetTask_Repeat);
+  } else {
     remove_task(pid + tid_show_spec_hud);
-  g_spec_target[pid] = target;
+  }
 }
 
 /* Client commands */
@@ -784,6 +794,18 @@ public task_show_primary_hud(tid)
       set_hudmessage(HUD_COLOR_ZOMBIE, 0.02, 0.2, 0, 0.0, 1.0, 0.1, 0.1);
   }
 
+  new skill_lvl[32 + 1];
+  new Float:skill = tb_get_player_skill(pid, skill_lvl);
+  new Float:internal_skill = Float:gxp_get_player_data(pid, pd_skill);
+
+  new skill_diff[12 + 1];
+  if (floatabs(internal_skill - skill) > 0.01) {
+    formatex(
+      skill_diff, charsmax(skill_diff),
+      " (%s%.2f)", internal_skill > skill ? "+" : "", internal_skill - skill
+    );
+  }
+
   if (lvl == _GXP_MAX_LEVEL) {
     ShowSyncHudMsg(
       pid,
@@ -791,7 +813,7 @@ public task_show_primary_hud(tid)
       "%L", pid, "GXP_HUD_PRIMARY_MAX",
       lvl, xp, xp == _GXP_MAX_XP ? " (MAX)" : "",
       _gxp_gun_names[lvl],
-      tb_get_player_skill(pid),
+      skill, skill_diff, skill_lvl,
       gxp_get_player_data(pid, pd_prs_stored)
     );
   } else {
@@ -803,7 +825,7 @@ public task_show_primary_hud(tid)
       "%L", pid, "GXP_HUD_PRIMARY",
       lvl, xp, _gxp_xp_level_map[lvl + 1], floatround(100 - xp_left*1.0/lvl_xp_diff*100),
       _gxp_gun_names[lvl],
-      tb_get_player_skill(pid),
+      skill, skill_diff, skill_lvl,
       gxp_get_player_data(pid, pd_prs_stored)
     );
   }
@@ -854,7 +876,18 @@ public task_show_zombie_hud(tid)
 public task_show_spec_hud(tid)
 {
   new pid = tid - tid_show_spec_hud;
-  new target = g_spec_target[pid];
+  new target = pev(pid, pev_iuser2);
+
+#if defined DEBUG
+  if (!is_user_connected(pid)) {
+    remove_task(tid);
+    ULOG( \
+      "gxp_ui", INFO, 0, "Player with PID %d has disconnected but SPEC task still exists. \
+      Removing.", pid \
+    );
+    return;
+  }
+#endif // DEBUG
 
   new ul_msg[512 + 1];
   new bool:any_uls = false;
@@ -869,10 +902,21 @@ public task_show_spec_hud(tid)
     get_user_weapons(target, wpns, wpn_num);
 
     new Array:uls[GxpUlClass];
-    gxp_get_player_data(pid, pd_uls, _:uls);
+    gxp_get_player_data(target, pd_uls, _:uls);
 
     new tmp[GxpUl];
     for (new i = 0; i != GxpUlClass; ++i) {
+#if defined DEBUG
+      if (!uls[i]) {
+        ULOG( \
+          "gxp_ui", INFO, target, \
+          "^"@name^" (@id) has an invalid UL array. [AuthID: @authid] [IP: @ip] [Team: @team] \
+          [Connected: %s] [Spectator: %d (connected: %s)]", \
+          is_user_connected(target) ? "true" : "false", \
+          pid, is_user_connected(pid) ? "true" : "false" \
+        );
+      }
+#endif // DEBUG
       for (new j = 0; j != ArraySize(uls[i]); ++j) {
         gxp_ul_get_by_id(ArrayGetCell(uls[i], j), tmp);
         for (new k = 0; k != wpn_num; ++k) {
@@ -899,6 +943,9 @@ public task_show_spec_hud(tid)
   new xp = gxp_get_player_data(target, pd_xp_curr);
   new lvl = gxp_get_player_data(target, pd_level);
 
+  new skill_lvl[32 + 1];
+  new Float:skill = tb_get_player_skill(target, skill_lvl);
+
   if (lvl == _GXP_MAX_LEVEL) {
     formatex(
       msg, charsmax(msg),
@@ -906,8 +953,8 @@ public task_show_spec_hud(tid)
       name,
       lvl, xp, xp == _GXP_MAX_XP ? " (MAX)" : "",
       _gxp_gun_names[lvl],
-      tb_get_player_skill(target),
-      gxp_get_player_data(pid, pd_prs_stored)
+      skill, skill_lvl,
+      gxp_get_player_data(target, pd_prs_stored)
     );
   } else {
     new xp_left = _gxp_xp_level_map[lvl + 1] - xp;
@@ -918,8 +965,8 @@ public task_show_spec_hud(tid)
       name,
       lvl, xp, _gxp_xp_level_map[lvl + 1], floatround(100 - xp_left*1.0/lvl_xp_diff*100),
       _gxp_gun_names[lvl],
-      tb_get_player_skill(target),
-      gxp_get_player_data(pid, pd_prs_stored)
+      skill, skill_lvl,
+      gxp_get_player_data(target, pd_prs_stored)
     );
   }
 
@@ -989,7 +1036,6 @@ cleanup(pid)
     umenu_close(pid);
 
   remove_task(pid + tid_show_spec_hud);
-  g_spec_target[pid] = 0;
 }
 
 bool:find_ul_by_mid(mid, ul[GxpUl])

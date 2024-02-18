@@ -91,7 +91,7 @@ public gxp_player_used_ability(pid)
   new Float:vel[3];
   xs_vec_mul_scalar(aim_dist, 2.0, vel);
 
-  eye_pos[2] -= 2;
+  eye_pos[2] -= 2; // Lower eyes slightly.
   ufx_te_bloodstream(eye_pos, vel, 82, 160);
 
   new target;

@@ -1,6 +1,7 @@
 #include <amxmodx>
 #include <amxmisc>
 #include <fakemeta>
+#include <fakemeta_util>
 #include <engine>
 
 #include <gunxp_swarm>
@@ -97,7 +98,7 @@ public fm_add_to_full_pack_post(
 {
   /* Fake animated skybox origin. */
   if (ent == g_sky_ent) {
-    new Float:origin[3];
+    static Float:origin[3];
     pev(host, pev_origin, origin);
     origin[2] -= 2000.0;
     set_es(es, ES_Origin, origin);

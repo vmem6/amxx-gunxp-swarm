@@ -398,6 +398,8 @@ public task_regen_hp(tid)
   if (hp < max_hp) {
     new Float:new_hp = hp + float(g_delta[pwr_hp_regen]*pwrs[pwr_hp_regen]);
     set_pev(pid, pev_health, new_hp > max_hp ? max_hp : new_hp);
+  } else {
+    TrieClear(Trie:gxp_get_player_data(pid, pd_kill_contributors));
   }
 }
 

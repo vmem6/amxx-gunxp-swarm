@@ -89,9 +89,8 @@ public plugin_init()
 
 public gxp_player_spawned(pid)
 {
-  if (!gxp_is_player_of_class(pid, g_id, g_props)) {
+  if (!_gxp_is_player_of_class(pid, g_id, g_props))
     return;
-  }
 
   set_pev(pid, pev_health, float(g_props[cls_health]));
   set_pev(pid, pev_armorvalue, float(g_props[cls_armour]));
@@ -103,15 +102,14 @@ public gxp_player_spawned(pid)
 
 public gxp_player_cleanup(pid)
 {
-  if (gxp_is_player_of_class(pid, g_id, g_props)) {
+  if (_gxp_is_player_of_class(pid, g_id, g_props)) {
   }
 }
 
 public gxp_player_used_ability(pid)
 {
-  if (!gxp_is_player_of_class(pid, g_id, g_props)) {
+  if (!_gxp_is_player_of_class(pid, g_id, g_props))
     return;
-  }
 
   new Float:time = get_gametime();
   if (time - Float:gxp_get_player_data(pid, pd_ability_last_used) < g_props[cls_ability_cooldown]) {
@@ -169,7 +167,7 @@ public ham_traceattack_post(victim, attacker, Float:dmg, Float:dir[3], tr_handle
     !is_user_alive(attacker)
     || !is_user_alive(victim)
     || GxpTeam:gxp_get_player_data(attacker, pd_team) == tm_zombie
-    || !gxp_is_player_of_class(victim, g_id, g_props)
+    || !_gxp_is_player_of_class(victim, g_id, g_props)
   ) {
     return HAM_IGNORED;
   }
@@ -213,7 +211,7 @@ public ham_traceattack_post(victim, attacker, Float:dmg, Float:dir[3], tr_handle
 
 public ham_item_preframe_post(pid)
 {
-  if (is_user_alive(pid) && gxp_is_player_of_class(pid, g_id, g_props)) {
+  if (is_user_alive(pid) && _gxp_is_player_of_class(pid, g_id, g_props)) {
     set_pev(pid, pev_maxspeed, float(g_props[cls_speed]));
     return HAM_SUPERCEDE;
   }
@@ -271,10 +269,10 @@ shoot_energy_ball(pid)
   new Float:origin[3];
   UTIL_GetPosition(pid, 10.0, 0.0, 15.0, origin);
 
-  pev(iPlayer, pev_origin, vecOrigin);
-  pev(iPlayer, pev_view_ofs, vecUp);
+  pev(pid, pev_origin, vecOrigin);
+  pev(pid, pev_view_ofs, vecUp);
   xs_vec_add(vecOrigin, vecUp, vecOrigin);
-  pev(iPlayer, pev_angles, vecAngle);
+  pev(pid, pev_angles, vecAngle);
 
   angle_vector(vecAngle, ANGLEVECTOR_FORWARD, vecForward);
   angle_vector(vecAngle, ANGLEVECTOR_RIGHT, vecRight);

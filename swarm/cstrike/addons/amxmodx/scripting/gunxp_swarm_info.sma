@@ -6,6 +6,8 @@
 
 #include <amxmodx>
 #include <amxmisc>
+#include <engine>
+#include <fakemeta>
 
 #include <gunxp_swarm>
 #include <gunxp_swarm_uls>
@@ -40,6 +42,8 @@ new g_survivor_xp;
 
 new g_spawns[MAX_PLAYERS + 1];
 
+new g_msgid_scoreinfo;
+
 public plugin_init()
 {
   register_plugin(_GXP_SWARM_INFO_PLUGIN, _GXP_SWARM_VERSION, _GXP_SWARM_AUTHOR);
@@ -54,6 +58,10 @@ public plugin_init()
   bind_pcvar_num(
     register_cvar("gxp_info_remind_prs_every_n_spawn", "3"), g_remind_prs_every_n_spawn
   );
+
+  /* Messages */
+
+  g_msgid_scoreinfo = get_user_msgid("ScoreInfo");
 
   /* Client commands */
 
@@ -150,6 +158,29 @@ public gxp_player_spawned(pid)
 
       new bonus_hp = g_bonus_hp_per_respawn*clamp(respawns, 0, max_respawns);
       chat_print(pid, g_prefix, "%L", pid, "GXP_CHAT_RESPAWN_BONUS_HP", bonus_hp, respawns);
+    }
+  }
+}
+
+public gxp_player_killed(pid, pid_killer, bool:hs, Array:contributors)
+{
+  new max_hp = gxp_get_max_hp(pid);
+  new kc[GxpKillContributor];
+  for (new i = 0, end = ArraySize(contributors); i != end; ++i) {
+    ArrayGetArray(contributors, i, kc);
+    new pid_contributor = kc[gxp_kc_pid];
+    if (pid_contributor != pid_killer && kc[gxp_kc_dmg]/max_hp > 0.49) {
+      new Float:frags;
+      pev(pid_contributor, pev_frags, frags);
+      set_pev(pid_contributor, pev_frags, frags + 1.0);
+
+      emessage_begin(MSG_BROADCAST, g_msgid_scoreinfo);
+      ewrite_byte(pid_contributor);
+      ewrite_short(floatround(frags + 1.0));
+      ewrite_short(get_user_deaths(pid_contributor));
+      ewrite_short(0);
+      ewrite_short(get_user_team(pid_contributor));
+      emessage_end();
     }
   }
 }
