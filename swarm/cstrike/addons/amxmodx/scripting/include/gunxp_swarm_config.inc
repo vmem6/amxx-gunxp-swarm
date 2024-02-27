@@ -7,7 +7,8 @@
 
 /* Natives */
 
-native gxp_config_get_class(const id[GXP_MAX_CLASS_ID_LENGTH + 1], dst[GxpClass]);
+native gxp_config_get_class(const id[GXP_MAX_CLASS_ID_LENGTH + 1], class[GxpClass]);
+native gxp_config_set_class(const id[GXP_MAX_CLASS_ID_LENGTH + 1], class[GxpClass]);
 
 native gxp_config_get_model_idx(const id[GXP_MAX_CLASS_ID_LENGTH + 1], const model_ctg[GXP_SWARM_CONFIG_MAX_KEY_LENGTH + 1], idx = -1);
 

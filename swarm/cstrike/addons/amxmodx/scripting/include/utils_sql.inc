@@ -81,7 +81,7 @@ native usql_set_data(Array:data, bool:cleanup = true);
  *
  * @return                Query handle.
  */
-native usql_query(const query[]);
+native usql_query(const query[], const callback[] = "");
 
 /*
  * Creates a table using `columns` if it does not yet exist.
@@ -94,7 +94,7 @@ native usql_query(const query[]);
  *
  * @return                 `true` if query was submitted for execution; `false` otherwise.
  */
-native bool:usql_create_table(const table[], Array:columns, const pkey[], bool:cleanup = true);
+native bool:usql_create_table(const table[], Array:columns, const pkey[], bool:cleanup = true, const callback[] = "");
 
 /*
  * Changes cached table to specified one.
@@ -116,7 +116,7 @@ native usql_set_table(const table[]);
  *
  * @noreturn
  */
-native usql_fetch(Array:columns = Invalid_Array, const cond[] = "", bool:cleanup = true);
+native usql_fetch(Array:columns = Invalid_Array, const cond[] = "", bool:cleanup = true, const callback[] = "");
 
 /*
  * Inserts a new record with `values` for `columns.`
@@ -128,7 +128,7 @@ native usql_fetch(Array:columns = Invalid_Array, const cond[] = "", bool:cleanup
  *
  * @noreturn
  */
-native usql_insert(Array:columns, Array:values, bool:cleanup = true);
+native usql_insert(Array:columns, Array:values, bool:cleanup = true, const callback[] = "");
 
 /*
  * Updates a record that satisfies `cond`.
@@ -143,7 +143,9 @@ native usql_insert(Array:columns, Array:values, bool:cleanup = true);
  *
  * @noreturn
  */
-native usql_update(Array:columns, Array:nvalues, Array:svalues, const cond[], bool:cleanup = true);
+native usql_update(Array:columns, Array:nvalues, Array:svalues, const cond[], bool:cleanup = true, const callback[] = "");
+
+native usql_get_table(table[], maxlen);
 
 /* Forwards */
 

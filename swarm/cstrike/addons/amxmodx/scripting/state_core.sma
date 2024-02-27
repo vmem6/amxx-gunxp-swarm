@@ -15,7 +15,7 @@
 #include <utils_text>
 #include <utils_bits>
 
-#define SQL_PLAYERS_TABLE "players"
+#define SQL_COMMON_TABLE "common"
 
 new const g_sql_cols[][SQLColumn] =
 {
@@ -31,6 +31,9 @@ new g_fwd_player_loaded;
 new g_sids[MAX_PLAYERS + 1];
 new StateDynamicIDType:g_did_types[MAX_PLAYERS + 1];
 
+new Trie:g_state_tables;
+new Trie:g_player_states[MAX_PLAYERS + 1];
+
 new g_names[MAX_PLAYERS + 1][MAX_NAME_LENGTH + 1];
 new g_stored_names[MAX_PLAYERS + 1][MAX_NAME_LENGTH + 1];
 
@@ -42,11 +45,18 @@ new g_forcing_name;
 
 public plugin_natives()
 {
+  g_state_tables = TrieCreate();
+
   register_library("state_core");
+
+  register_native("state_queue_table", "native_queue_table");
 
   register_native("state_get_player_sid", "native_get_sid");
   register_native("state_get_player_did_type", "native_get_did_type");
   register_native("state_set_player_did_type", "native_set_did_type");
+
+  register_native("state_get_val", "native_get_val");
+  register_native("state_set_val", "native_set_val");
 }
 
 public plugin_init()
@@ -93,6 +103,28 @@ public plugin_cfg()
   setup_sql();
 }
 
+public plugin_end()
+{
+  // new table[StateTable];
+  // for (new i = 0, end = ArraySize(g_state_tables); i != end; ++i) {
+  //   ArrayGetArray(g_state_tables, i, table);
+  //   ArrayDestroy(table[st_cols]);
+  // }
+  // ArrayDestroy(g_state_tables);
+
+  for (new i = 0; i != MAX_PLAYERS + 1; ++i) {
+    if (!g_player_states[i])
+      continue;
+
+    new TrieIter:iter = TrieIterCreate(g_player_states[i]);
+    for (new Trie:pstate; TrieIterGetCell(iter, pstate); TrieIterNext(iter))
+      TrieDestroy(pstate);
+    TrieIterDestroy(iter);
+
+    TrieDestroy(g_player_states[i]);
+  }
+}
+
 /* Forwards > Client */
 
 public client_putinserver(pid)
@@ -104,8 +136,11 @@ public client_putinserver(pid)
   g_stored_names[pid][0] = '^0';
   UBITS_PUNSET(g_forcing_name, pid);
 
-  if (!is_user_hltv(pid) && !is_user_bot(pid))
+  if (!is_user_hltv(pid) && !is_user_bot(pid)) {
+    if (g_player_states[pid])
+      TrieClear(g_player_states[pid]);
     load_player_state(pid, 1);
+  }
 }
 
 public client_disconnected(pid, bool:drop, message[], maxlen)
@@ -120,7 +155,7 @@ public client_disconnected(pid, bool:drop, message[], maxlen)
     usql_sanitize(g_names[pid], charsmax(g_names[]));
     usql_update_ex(
       usql_sarray("nick"), usql_sarray(g_names[pid]),
-      Array:-1, true,
+      Array:-1, true, "",
       "`static_id`='%d'", g_sids[pid]
     );
   }
@@ -143,16 +178,18 @@ public fm_clientuserinfochanged_pre(pid)
   copy(g_names[pid], charsmax(g_names[]), new_name);
 
   if (!UBITS_PCHECK(g_forcing_name, pid)) {
-    usql_set_data(usql_array(pid));
     usql_sanitize(new_name, charsmax(new_name));
+    usql_set_data(usql_array(pid));
     if (g_did_types[pid] == s_did_t_name) {
       usql_update_ex(
         usql_sarray("dynamic_id"), usql_sarray(new_name),
-        Array:-1, true,
+        Array:-1, true, "qcb_change_nick",
         "`static_id`='%d'", g_sids[pid]
       );
     } else {
-      usql_fetch_ex(usql_sarray("static_id"), true, "`dynamic_id`='%s'", new_name);
+      usql_fetch_ex(
+        usql_sarray("static_id"), true, "qcb_change_nick", "`dynamic_id`='%s'", new_name
+      );
     }
 
     /* Defer name change until we know that the query succeeded. */
@@ -166,6 +203,44 @@ public fm_clientuserinfochanged_pre(pid)
 }
 
 /* Natives */
+
+public native_queue_table(plugin, argc)
+{
+  enum {
+    param_table = 1,
+    param_cols  = 2
+  };
+
+  new table[MAX_SQL_TABLE_NAME_LENGTH + 1];
+  get_string(param_table, table, charsmax(table));
+
+  new Array:cols = Array:get_param(param_cols);
+
+  /* Add `id` column if it doesn't exist. */
+  new col[SQLColumn];
+  new bool:id_col_exists = false;
+  for (new i = 0, end = ArraySize(cols); i != end; ++i) {
+    ArrayGetArray(cols, i, col);
+    if (equali(col[sc_name], "id")) {
+      id_col_exists = true;
+      break;
+    }
+  }
+  if (!id_col_exists) {
+    copy(col[sc_name], charsmax(col[sc_name]), "id");
+    col[sc_type] = sct_int;
+    col[sc_size] = 11;
+    copy(col[sc_def_val], charsmax(col[sc_def_val]), "0");
+    col[sc_not_null] = true;
+    col[sc_auto_increment] = false;
+    ArrayInsertArrayBefore(cols, 0, col);
+  }
+
+  usql_create_table(table, cols, "id", .cleanup = false);
+  usql_set_table(SQL_COMMON_TABLE);
+
+  TrieSetCell(g_state_tables, table, cols);
+}
 
 public native_get_sid(plugin, argc)
 {
@@ -209,11 +284,131 @@ public native_set_did_type(plugin, argc)
   usql_set_data(usql_array(pid, g_did_types[pid]));
   usql_sanitize(did, charsmax(did));
   usql_update_ex(
-    usql_sarray("dynamic_id"), usql_sarray(did), Array:-1, true, "`static_id`='%d'", g_sids[pid]
+    usql_sarray("dynamic_id"), usql_sarray(did), Array:-1, true, "qcb_update_did",
+    "`static_id`='%d'", g_sids[pid]
   );
 
   g_did_types[pid] = did_t;
   UBITS_PSET(g_did_changed, pid);
+}
+
+public native_get_val(plugin, argc)
+{
+  enum {
+    param_pid     = 1,
+    param_state   = 2,
+    param_field   = 3,
+    param_buffer  = 4,
+    param_maxlen  = 5
+  };
+
+  new pid = get_param(param_pid);
+  if (!g_player_states[pid])
+    return -1;
+
+  new table[MAX_SQL_TABLE_NAME_LENGTH + 1];
+  get_string(param_state, table, charsmax(table));
+
+  new Trie:pstate;
+  if (!TrieGetCell(g_player_states[pid], table, pstate))
+    return -1;
+
+  new Array:cols;
+  if (!TrieGetCell(g_state_tables, table, cols))
+    return -1;
+
+  new col_name[MAX_SQL_COLUMN_NAME_LENGTH + 1];
+  get_string(param_field, col_name, charsmax(col_name));
+  new col[SQLColumn];
+  for (new i = 0, end = ArraySize(cols); i != end; ++i) {
+    ArrayGetArray(cols, i, col);
+    if (equal(col[sc_name], col_name)) {
+      switch(col[sc_type]) {
+        case sct_int, sct_float: {
+          new val;
+          TrieGetCell(pstate, col_name, val);
+          return val;
+        }
+
+        case sct_varchar: {
+          new buffer[MAX_SQL_COLUMN_VALUE_LENGTH + 1];
+          TrieGetString(pstate, col_name, buffer, charsmax(buffer));
+          set_string(param_buffer, buffer, get_param(param_maxlen));
+          return strlen(buffer);
+        }
+      }
+    }
+  }
+
+  return -1;
+}
+
+public native_set_val(plugin, argc)
+{
+  enum {
+    param_pid   = 1,
+    param_state = 2,
+    param_field = 3,
+    param_val   = 4
+  };
+
+  new pid = get_param(param_pid);
+  if (!g_player_states[pid])
+    return;
+
+  new table[MAX_SQL_TABLE_NAME_LENGTH + 1];
+  get_string(param_state, table, charsmax(table));
+
+  new Trie:pstate;
+  if (!TrieGetCell(g_player_states[pid], table, pstate))
+    return;
+
+  new Array:cols;
+  if (!TrieGetCell(g_state_tables, table, cols))
+    return;
+
+  usql_set_table(table);
+
+  new col_name[MAX_SQL_COLUMN_NAME_LENGTH + 1];
+  get_string(param_field, col_name, charsmax(col_name));
+  new col[SQLColumn];
+  for (new i = 0, end = ArraySize(cols); i != end; ++i) {
+    ArrayGetArray(cols, i, col);
+    if (equal(col[sc_name], col_name)) {
+      switch(col[sc_type]) {
+        case sct_int: {
+          new val = get_param(param_val);
+          TrieSetCell(pstate, col_name, val);
+          usql_update_ex(
+            usql_sarray(col_name), usql_asarray(val), Array:-1, true, "",
+            "`id`='%d'", g_sids[pid]
+          );
+        }
+        case sct_float: {
+          new Float:val = Float:get_param(param_val);
+          TrieSetCell(pstate, col_name, val);
+          usql_update_ex(
+            usql_sarray(col_name), usql_fsarray(val), Array:-1, true, "",
+            "`id`='%d'", g_sids[pid]
+          );
+        }
+        case sct_varchar: {
+          new val[MAX_SQL_COLUMN_VALUE_LENGTH + 1];
+          get_string(param_val, val, charsmax(val));
+          TrieSetString(pstate, col_name, val);
+          usql_update_ex(
+            usql_sarray(col_name), usql_sarray(val), Array:-1, true, "",
+            "`id`='%d'", g_sids[pid]
+          );
+        }
+      }
+      break;
+    }
+  }
+
+  usql_set_table(SQL_COMMON_TABLE);
+
+  return;
 }
 
 /* SQL */
@@ -222,7 +417,7 @@ setup_sql()
 {
   usql_cache_info(g_usql_host, g_usql_user, g_usql_pass, g_usql_db);
   usql_create_table(
-    SQL_PLAYERS_TABLE, usql_2darray(g_sql_cols, sizeof(g_sql_cols), SQLColumn), "`static_id`"
+    SQL_COMMON_TABLE, usql_2darray(g_sql_cols, sizeof(g_sql_cols), SQLColumn), "`static_id`"
   );
 }
 
@@ -258,10 +453,12 @@ load_player_state(pid, call_n)
 
   usql_set_data(usql_array(pid, call_n));
   usql_sanitize(did, charsmax(did));
-  usql_fetch_ex(usql_sarray("static_id", "nick"), true, "`dynamic_id`='%s'", did);
+  usql_fetch_ex(
+    usql_sarray("static_id", "nick"), true, "qcb_fetch_state", "`dynamic_id`='%s'", did
+  );
 }
 
-parse_data(pid, Handle:handle)
+parse_player_state(pid, Handle:handle)
 {
   g_sids[pid] = SQL_ReadResult(handle, SQL_FieldNameToNum(handle, "static_id"));
   SQL_ReadResult(
@@ -270,61 +467,183 @@ parse_data(pid, Handle:handle)
   usql_desanitize(g_stored_names[pid], charsmax(g_stored_names[]));
 }
 
+load_state_table(pid, TrieIter:table_iter)
+{
+  new table[MAX_SQL_TABLE_NAME_LENGTH + 1];
+  TrieIterGetKey(table_iter, table, charsmax(table));
+  usql_set_table(table);
+  usql_set_data(usql_array(pid, table_iter));
+  usql_fetch_ex(Invalid_Array, true, "qcb_fetch_state_table", "`id`='%d'", g_sids[pid]);
+  usql_set_table(SQL_COMMON_TABLE);
+}
+
+parse_state_table(pid, const table[], Array:cols, Handle:handle)
+{
+  new Trie:pstate;
+  if (!TrieGetCell(g_player_states[pid], table, pstate))
+    TrieSetCell(g_player_states[pid], table, pstate = TrieCreate());
+
+  new col[SQLColumn];
+  for (new i = 0, end = ArraySize(cols); i != end; ++i) {
+    ArrayGetArray(cols, i, col);
+    switch (col[sc_type]) {
+      case sct_int: TrieSetCell(pstate, col[sc_name], SQL_ReadResult(handle, i));
+      case sct_float: {
+        new Float:val;
+        SQL_ReadResult(handle, i, val);
+        TrieSetCell(pstate, col[sc_name], val);
+      }
+      case sct_varchar: {
+        new val[MAX_SQL_COLUMN_VALUE_LENGTH + 1];
+        SQL_ReadResult(handle, i, val, charsmax(val));
+        TrieSetString(pstate, col[sc_name], val);
+      }
+    }
+  }
+}
+
+/* SQL > Query callbacks > General */
+
 public usql_query_finished(SQLQuery:query, Handle:handle, bool:success, error[], errnum, data[], sz)
 {
+  if (!success)
+    handle_error(handle, "G1", error, errnum);
+}
+
+/* SQL > Query callbacks > Other */
+
+public qcb_fetch_state(SQLQuery:query, Handle:handle, bool:success, error[], errnum, data[], sz)
+{
   if (!success) {
-    if (query == sq_fetch) {
-      new qstring[256 + 1];
-      SQL_GetQueryString(handle, qstring, charsmax(qstring));
-      ULOG("state_sql", ERROR, 0, "Query failed (1): %s [Error (%d): %s]", qstring, errnum, error);
-      // chat_print(0, g_prefix, "%L", pid, "STATE_CHAT_INTERNAL_ERROR", 1);
+    handle_error(handle, "FS1", error, errnum);
+    return;
+  }
+
+  enum {
+    data_pid    = 0,
+    data_call_n = 1
+  };
+
+  new pid = data[data_pid];
+  if (SQL_NumResults(handle) > 0) {
+    parse_player_state(pid, handle);
+    if (TrieGetSize(g_state_tables) > 0) {
+      if (!g_player_states[pid])
+        g_player_states[pid] = TrieCreate();
+      load_state_table(pid, TrieIterCreate(g_state_tables));
+    } else {
+      ExecuteForward(g_fwd_player_loaded, _, pid, g_sids[pid]);
+    }
+  } else {
+    load_player_state(pid, data[data_call_n] + 1);
+  }
+}
+
+public qcb_fetch_state_table(
+  SQLQuery:query, Handle:handle, bool:success, error[], errnum, data[], sz
+)
+{
+  enum {
+    data_pid        = 0,
+    data_table_iter = 1
+  };
+
+  new pid = data[data_pid];
+  new TrieIter:table_iter = TrieIter:data[data_table_iter];
+
+  if (!success) {
+    handle_error(handle, "FST1", error, errnum);
+  } else {
+    new table[MAX_SQL_TABLE_NAME_LENGTH + 1];
+    TrieIterGetKey(table_iter, table, charsmax(table));
+    if (SQL_NumResults(handle) > 0) {
+      new Array:cols;
+      TrieIterGetCell(table_iter, cols);
+      parse_state_table(pid, table, cols, handle);
+    } else {
+      usql_set_table(table);
+      usql_insert(usql_sarray("id"), usql_asarray(g_sids[pid]));
+      usql_set_table(SQL_COMMON_TABLE);
+      /* Reload player now that a record for him has been inserted. */
+      load_state_table(pid, table_iter);
       return;
     }
+  }
 
-    /* Attempted DID or name change, and, most likely, a similar record already
-     * exists. */
-    if (sz > 0) {
-      new pid = data[0];
-      /* DID change - restore old DID type. */
-      if (sz == 2)
-        g_did_types[pid] = StateDynamicIDType:data[1];
-      /* Name change - restore previous name. */
-      else
-        get_user_name(pid, g_names[pid], charsmax(g_names[]));
+  TrieIterNext(table_iter);
+  if (!TrieIterEnded(table_iter)) {
+    load_state_table(pid, table_iter);
+  } else {
+    TrieIterDestroy(table_iter);
+    ExecuteForward(g_fwd_player_loaded, _, pid, g_sids[pid]);
+  }
+}
 
-      umenu_refresh(pid);
+public qcb_update_did(SQLQuery:query, Handle:handle, bool:success, error[], errnum, data[], sz)
+{
+  /* Attempted DID was most likely blocked because a similar record already
+   * exists. */
+  if (!success) {
+    enum { data_pid = 0 };
+    new pid = data[data_pid];
 
-      console_print(pid, "%L", pid, "STATE_NAME_RESERVED");
-      chat_print(pid, g_prefix, "%L", pid, "STATE_NAME_RESERVED");
-    }
+    g_did_types[pid] = StateDynamicIDType:data[1];
 
-    new qstring[256 + 1];
-    SQL_GetQueryString(handle, qstring, charsmax(qstring));
-    ULOG("state_sql", ERROR, 0, "Query failed (2): %s [Error (%d): %s]", qstring, errnum, error);
-    return;
-  /* Attempted name change. */
-  } else if (sz == 1) {
-    new pid = data[0];
+    umenu_refresh(pid);
 
+    console_print(pid, "%L", pid, "STATE_NAME_RESERVED");
+    chat_print(pid, g_prefix, "%L", pid, "STATE_NAME_RESERVED");
+  }
+}
+
+public qcb_change_nick(SQLQuery:query, Handle:handle, bool:success, error[], errnum, data[], sz)
+{
+  enum { data_pid = 0 };
+  new pid = data[data_pid];
+  if (success) {
     /* Attempted to change name to one that is used by someone else as a DID. */
     if (query == sq_fetch && SQL_NumResults(handle) > 0) {
       console_print(pid, "%L", pid, "STATE_NAME_RESERVED");
       chat_print(pid, g_prefix, "%L", pid, "STATE_NAME_RESERVED");
+      /* Block name change. */
+      get_user_name(pid, g_names[pid], charsmax(g_names[]));
       return;
     }
 
+    /* Allow name change to proceed. */
     UBITS_PSET(g_forcing_name, pid);
     set_user_info(pid, "name", g_names[pid]);
-    return;
-  }
-
-  if (query == sq_fetch) {
-    new pid = data[0];
-    if (SQL_NumResults(handle) > 0) {
-      parse_data(pid, handle);
-      ExecuteForward(g_fwd_player_loaded, _, pid, g_sids[pid]);
-    } else {
-      load_player_state(pid, data[1] + 1);
+  } else {
+    if (query == sq_fetch) {
+      handle_error(handle, "CN1", error, errnum);
+      return;
     }
+
+    /* Attempted name change (and, consequently, DID because this scenario
+     * should only occur when DID type is `s_did_t_name`) was most likely
+     * blocked because a record with an identical DID already exists. */
+    get_user_name(pid, g_names[pid], charsmax(g_names[]));
+    console_print(pid, "%L", pid, "STATE_NAME_RESERVED");
+    chat_print(pid, g_prefix, "%L", pid, "STATE_NAME_RESERVED");
+
+    handle_error(handle, "CN2", error, errnum);
+  }
+}
+
+/* Helpers */
+
+handle_error(
+  Handle:handle, const err_id[], const sql_error[], sql_errnum, bool:inform_player = false
+)
+{
+  new qstring[256 + 1];
+  SQL_GetQueryString(handle, qstring, charsmax(qstring));
+  ULOG( \
+    "state_sql", ERROR, 0, \
+    "Query failed (%s): %s [Error (%d): %s]", err_id, qstring, sql_errnum, sql_error \
+  );
+
+  if (inform_player) {
+    /* TODO: inform player. */
   }
 }

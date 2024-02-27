@@ -696,9 +696,9 @@ public ham_player_takedamage_post(
     ULOG( \
       "gxp_stats", INFO, id_attacker, \
       "^"@name^" (@id/%d) damaged ^"%s^" (%d): %.1f dmg (total: %.1f). \
-      [Team(c/v): %d/%d] [HP: %.1f] [Max. HP: %.1f] [Contributors: %d]", \
+      [Team(c/v): @team/%d] [HP: %.1f] [Max. HP: %.1f] [Contributors: %d]", \
       state_get_player_sid(id_attacker), name, pid_victim, dmg, stored_dmg + dmg, \
-      get_user_team(id_attacker), get_user_team(pid_victim), hp, float(get_max_hp(pid_victim)), \
+      get_user_team(pid_victim), hp, float(get_max_hp(pid_victim)), \
       TrieGetSize(g_players[pid_victim][pd_kill_contributors]) \
     );
 #endif // DEBUG
@@ -1460,18 +1460,17 @@ suit_up(pid, bool:bypass_remember_sel = false)
 
 	if (g_players[pid][pd_team] == tm_survivor) {
 		fm_give_item(pid, "weapon_flashbang");
-		fm_give_item(pid, "weapon_flashbang");
 		fm_give_item(pid, "weapon_hegrenade");
 
-		/* Don't give freeze nade when there are < 4 players. */
-		if (!have_force(pid) && !have_gas(pid) && !have_pipe(pid)) {
-			new total_players =
-				get_playersnum_ex(GetPlayers_ExcludeHLTV | GetPlayers_MatchTeam, "TERRORIST")
-				+ get_playersnum_ex(GetPlayers_ExcludeHLTV | GetPlayers_MatchTeam, "CT");
-			if (total_players >= 4)
-				fm_give_item(pid, "weapon_smokegrenade");
-		} else {
+		new total_players =
+			get_playersnum_ex(GetPlayers_ExcludeHLTV | GetPlayers_MatchTeam, "TERRORIST")
+			+ get_playersnum_ex(GetPlayers_ExcludeHLTV | GetPlayers_MatchTeam, "CT");
+		if (total_players >= 4) {
+			fm_give_item(pid, "weapon_flashbang");
 			fm_give_item(pid, "weapon_smokegrenade");
+		} else {
+			if (have_force(pid) || have_gas(pid) || have_pipe(pid))
+				fm_give_item(pid, "weapon_smokegrenade");
 		}
 
 		if (bypass_remember_sel || g_players[pid][pd_remember_sel] != gxp_remember_sel_off) {

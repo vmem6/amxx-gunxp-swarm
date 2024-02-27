@@ -64,16 +64,15 @@ stock con_print(const pid, const fmt[], any:...)
  *
  * @noreturn
  */
-stock ellipsize(str[], maxlen)
+stock ellipsize(str[], maxlen, const syms[3 + 1] = "...")
 {
-  if (strlen(str) <= maxlen || maxlen < (1 + 3 + 3)) {
+  if (strlen(str) <= maxlen || maxlen < (1 + 3 + 3))
     return;
-  }
 
   new len = strlen(str);
-  str[maxlen - 6] = '.';
-  str[maxlen - 5] = '.';
-  str[maxlen - 4] = '.';
+  str[maxlen - 6] = syms[0];
+  str[maxlen - 5] = syms[1];
+  str[maxlen - 4] = syms[2];
   str[maxlen - 3] = str[len - 3];
   str[maxlen - 2] = str[len - 2];
   str[maxlen - 1] = str[len - 1];

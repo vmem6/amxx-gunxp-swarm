@@ -27,6 +27,7 @@
 enum SQLColumnType
 {
   sct_int = 0,
+  sct_float,
   sct_varchar
 }
 

@@ -122,7 +122,7 @@ stock ufx_bartime(pid, length)
 stock ufx_fog(const pid, const rgb[3], const Float:density = 0.001, bool:clear = false)
 {
   _UFX_FETCH_MSGID(Fog);
-  message_begin(pid ? MSG_ONE : MSG_BROADCAST, _UFX_MSGID(Fog), .player = pid);
+  message_begin(pid ? MSG_ONE_UNRELIABLE : MSG_BROADCAST, _UFX_MSGID(Fog), .player = pid);
   write_byte(clamp(rgb[0], 0, 255));
   write_byte(clamp(rgb[1], 0, 255));
   write_byte(clamp(rgb[2], 0, 255));
@@ -131,6 +131,37 @@ stock ufx_fog(const pid, const rgb[3], const Float:density = 0.001, bool:clear =
 }
 
 /* Temporary events */
+
+stock ufx_te_beampoints(
+  pid,
+  const beg[3], const end[3],
+  spr, start_frame, Float:frame_rate,
+  Float:life, Float:line_width, Float:noise,
+  const rgb[3], brightness,
+  Float:scroll_speed
+)
+{
+  message_begin(pid == 0 ? MSG_BROADCAST : MSG_ONE_UNRELIABLE, SVC_TEMPENTITY, .player = pid);
+  write_byte(TE_BEAMPOINTS);
+  write_coord(beg[0]);
+  write_coord(beg[1]);
+  write_coord(beg[2]);
+  write_coord(end[0]);
+  write_coord(end[1]);
+  write_coord(end[2]);
+  write_short(spr);
+  write_byte(start_frame);
+  write_byte(floatround(frame_rate/0.1));
+  write_byte(floatround(life/0.1));
+  write_byte(floatround(line_width/0.1));
+  write_byte(floatround(noise/0.1));
+  write_byte(rgb[0]);
+  write_byte(rgb[1]);
+  write_byte(rgb[2]);
+  write_byte(brightness);
+  write_byte(floatround(scroll_speed/0.1));
+  message_end();
+}
 
 stock ufx_te_beamfollow(pid, spr, Float:life, Float:line_width, const rgb[3], brightness)
 {
@@ -420,6 +451,23 @@ stock ufx_te_sparks(const origin[3])
   write_coord(origin[0]);
   write_coord(origin[1]);
   write_coord(origin[2]);
+  message_end();
+}
+
+stock ufx_te_lightning(const beg[3], const end[3], Float:life, Float:width, Float:amp, sprite_idx)
+{
+  message_begin(MSG_BROADCAST, SVC_TEMPENTITY);
+  write_byte(TE_LIGHTNING);
+  write_coord(beg[0]);
+  write_coord(beg[1]);
+  write_coord(beg[2]);
+  write_coord(end[0]);
+  write_coord(end[1]);
+  write_coord(end[2]);
+  write_byte(floatround(life/0.1));
+  write_byte(floatround(width/0.1));
+  write_byte(floatround(amp/0.1));
+  write_short(sprite_idx);
   message_end();
 }
 

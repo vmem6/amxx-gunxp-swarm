@@ -5,6 +5,7 @@
 #endif
 #define _GUNXP_SWARM_STOCKS_INC
 
+#include <fakemeta>
 #include <cstrike>
 
 #include <gunxp_swarm>
@@ -16,10 +17,10 @@ stock bool:_gxp_is_player_of_class(pid, cid, const props[GxpClass])
     && GxpTeam:gxp_get_player_data(pid, pd_team) == props[cls_team];
 }
 
-stock gxp_user_set_model(pid, props[GxpClass])
+stock gxp_user_set_model(pid, props[GxpClass], const model_id[] = "player")
 {
   new mdl[GXP_SWARM_CONFIG_MAX_PROP_LENGTH + 1];
-  TrieGetString(props[cls_models], "player", mdl, charsmax(mdl));
+  TrieGetString(props[cls_models], model_id, mdl, charsmax(mdl));
   cs_set_user_model(pid, mdl);
 }
 

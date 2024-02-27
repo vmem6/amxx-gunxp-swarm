@@ -43,9 +43,8 @@ new g_id_name_item;
 
 public plugin_natives()
 {
-  // register_library("state_ui");
-  // register_native("state_ui_register_category", "native_register_category");
-  // register_native("state_ui_add_item", "native_add_item");
+  register_library("state_ui");
+  register_native("state_ui_get_global_ctg", "native_get_global_ctg");
 }
 
 public plugin_init()
@@ -69,17 +68,10 @@ public plugin_init()
 
 /* Natives */
 
-// public native_register_category(plugin, argc)
-// {
-//   enum { param_category_id = 1 };
-//   return register_category(plugin, get_param(param_category_id));
-// }
-// 
-// public native_add_item(plugin, argc)
-// {
-//   enum { param_category_id = 1 };
-//   return add_item(plugin, get_param(param_category_id));
-// }
+public native_get_global_ctg(plugin, argc)
+{
+  return g_ctg;
+}
 
 /* Forwards */
 

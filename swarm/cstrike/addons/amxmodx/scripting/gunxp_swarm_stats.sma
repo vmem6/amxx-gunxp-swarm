@@ -200,7 +200,7 @@ public gxp_player_killed(pid, pid_killer, bool:hs, Array:contributors)
       /* For the aforementioned reason of it being more strenuous when playing
        * as a zombie, increase the weight of the kill. */
       if (total_players >= 4)
-        wkill += 3.0;
+        wkill += wkill*3.0;
     /* On the other hand, a skilled player won't have much difficulty playing as a survivor (at
      * least, more so than not), no matter the player count.
      * This also means that weaker players will always benefit when playing as survivors. */
@@ -223,7 +223,7 @@ load_player(pid, sid)
 {
   usql_set_table(_GXP_SWARM_SQL_STATS_TABLE);
   usql_set_data(usql_array(pid, sid));
-  usql_fetch_ex(Invalid_Array, true, "`id`='%d'", sid);
+  usql_fetch_ex(Invalid_Array, true, "", "`id`='%d'", sid);
 }
 
 parse_player_data(pid, Handle:query)
@@ -266,7 +266,8 @@ save_player(pid, sid)
       gxp_get_player_stat(pid, gxp_pstats_aggro_time)
     ),
     Array:-1,
-    true,
+    true, // cleanup
+    "", // callback
     "`id`='%d'", sid
   );
 }

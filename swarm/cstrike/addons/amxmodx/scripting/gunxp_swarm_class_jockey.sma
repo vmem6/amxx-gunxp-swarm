@@ -61,9 +61,8 @@ public gxp_player_died(pid)   { gxp_emit_sound(pid, "death", g_id, g_props, CHAN
 public fm_touch_post(ent, pid)
 {
   if (is_user_alive(pid) && _gxp_is_player_of_class(pid, g_id, g_props)) {
-    // static classname[32 + 1];
-    // pev(ent, pev_classname, classname, charsmax(classname));
-    // server_print("touching: %s (%d)", classname, ent);
+    if (pev(ent, pev_solid) & SOLID_TRIGGER)
+      return;
     pev(pid, pev_origin, g_touch_origin[pid]);
   }
 }

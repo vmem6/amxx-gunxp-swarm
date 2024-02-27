@@ -194,7 +194,7 @@ load_player(pid, sid, SQLState:load = st_load_base)
 {
   usql_set_table(load == st_load_base ? _GXP_SWARM_SQL_PLAYERS_TABLE : _GXP_SWARM_SQL_POWERS_TABLE);
   usql_set_data(usql_array(pid, sid, load));
-  usql_fetch_ex(Invalid_Array, true, "`id`='%d'", sid);
+  usql_fetch_ex(Invalid_Array, true, "", "`id`='%d'", sid);
 }
 
 parse_player_base(pid, Handle:query)
@@ -268,6 +268,7 @@ save_player(pid, sid)
     ),
     Array:-1,
     true, // cleanup
+    "", // callback
     "`id`='%d'", sid
   );
 
@@ -317,6 +318,7 @@ save_player(pid, sid)
     ),
     usql_sarray(chosen_vaccines),
     true, // cleanup
+    "", // callback
     "`id`='%d'", sid
   );
 

@@ -13,7 +13,8 @@ enum _:Category
   ctg_plugin,
   bool:ctg_items_first,
   Array:ctg_items,
-  Array:ctg_categories
+  Array:ctg_categories,
+  Array:ctg_notices
 };
 
 enum _:Item
@@ -26,7 +27,8 @@ enum _:Item
 enum _:Menu
 {
   menu_page,
-  menu_ctg
+  menu_ctg,
+  bool:menu_refreshing
 };
 
 new g_id;
@@ -48,6 +50,7 @@ public plugin_natives()
 
   register_native("umenu_register_category", "native_register_category");
   register_native("umenu_add_item", "native_add_item");
+  register_native("umenu_add_notice", "native_add_notice");
 
   register_native("umenu_display", "native_display");
   register_native("umenu_close", "native_close");
@@ -125,6 +128,12 @@ public native_add_item(plugin, argc)
   return add_item(plugin, get_param(param_cid));
 }
 
+public native_add_notice(plugin, argc)
+{
+  enum { param_cid = 1 };
+  return add_notice(get_param(param_cid));
+}
+
 public native_display(plugin, argc)
 {
   enum {
@@ -153,8 +162,16 @@ public native_refresh(plugin, argc)
 {
   enum { param_pid = 1 };
   new pid = get_param(param_pid);
-  if (g_menus[pid][menu_ctg] != -1)
-    render(pid, g_menus[pid][menu_ctg], g_menus[pid][menu_page]);
+  if (g_menus[pid][menu_ctg] != -1) {
+    /* Only refresh menus that were also created by the calling plugin. */
+    new ctg[Category];
+    if (!find(g_menus[pid][menu_ctg], umenu_ctx_category, g_categories, .ctg_ret = ctg))
+      return;
+    if (ctg[ctg_plugin] == plugin) {
+      g_menus[pid][menu_refreshing] = true;
+      render(pid, g_menus[pid][menu_ctg], g_menus[pid][menu_page]);
+    }
+  }
 }
 
 public native_get_current_ctg(plugin, argc)
@@ -297,14 +314,16 @@ public handle_menu(pid, menu, item)
 
   switch (item) {
     case MENU_EXIT: {
-      /* Backtrack category chain if not empty. */
-      if (chainlen > 0) {
-        new prev_cid = ArrayGetCell(ctg_chain, chainlen - 1);
-        ArrayDeleteItem(ctg_chain, chainlen - 1);
-        render(pid, prev_cid);
-      } else {
-        g_menus[pid][menu_page] = 0;
-        g_menus[pid][menu_ctg]  = -1;
+      if (!g_menus[pid][menu_refreshing]) {
+        /* Backtrack category chain if not empty. */
+        if (chainlen > 0) {
+          new prev_cid = ArrayGetCell(ctg_chain, chainlen - 1);
+          ArrayDeleteItem(ctg_chain, chainlen - 1);
+          render(pid, prev_cid);
+        } else {
+          g_menus[pid][menu_page] = 0;
+          g_menus[pid][menu_ctg]  = -1;
+        }
       }
     }
 
@@ -334,6 +353,8 @@ public handle_menu(pid, menu, item)
     }
   }
 
+  g_menus[pid][menu_refreshing] = false;
+
   menu_destroy(menu);
   return PLUGIN_HANDLED;
 }
@@ -360,6 +381,7 @@ register_category(plugin, req_cid, bool:items_first)
   ctg[ctg_items_first]  = items_first;
   ctg[ctg_items]        = ArrayCreate(Item);
   ctg[ctg_categories]   = ArrayCreate(Category);
+  ctg[ctg_notices]      = ArrayCreate();
   ArrayPushArray(categories, ctg);
   
   if (g_render_fwds[plugin] == 0) {
@@ -386,6 +408,16 @@ add_item(plugin, req_cid)
   ArrayPushArray(req_ctg[ctg_items], item);
 
   return g_id;
+}
+
+add_notice(req_cid)
+{
+  new req_ctg[Category];
+  if (find(req_cid, umenu_ctx_category, g_categories, .ctg_ret = req_ctg)) {
+    ArrayPushCell(req_ctg[ctg_notices], ++g_id);
+    return g_id;
+  }
+  return UMENU_INVALID_ITEM;
 }
 
 bool:find(id, UMenuContext:ctx, Array:categories, item_ret[Item] = {}, ctg_ret[Category] = {})
@@ -440,7 +472,7 @@ menu_update_title(pid, mid)
   if (!find(cid, umenu_ctx_category, g_categories, .ctg_ret = ctg))
     return;
 
-  new str[UMENU_MAX_TITLE_LENGTH + 1];
+  new title[UMENU_MAX_TITLE_LENGTH + 1];
   ExecuteForward(
     g_render_fwds[ctg[ctg_plugin]], _,
     pid, cid,
@@ -448,6 +480,27 @@ menu_update_title(pid, mid)
     g_str,
     g_menus[pid][menu_page] + 1, menu_pages(mid)
   );
-  UMENU_READ_STRING(g_str, str)
-  menu_setprop(mid, MPROP_TITLE, str);
+  UMENU_READ_STRING(g_str, title)
+
+  new noticenum = ArraySize(ctg[ctg_notices]);
+  if (noticenum > 0) {
+    new notice[UMENU_MAX_NOTICE_LENGTH + 1];
+    new bool:display;
+    for (new i = 0; i != noticenum; ++i) {
+      ExecuteForward(
+        g_render_fwds[ctg[ctg_plugin]], display,
+        pid, ArrayGetCell(ctg[ctg_notices], i),
+        umenu_ctx_notice, umenu_cp_notice,
+        g_str,
+        g_menus[pid][menu_page] + 1, menu_pages(mid)
+      );
+      if (display) {
+        UMENU_READ_STRING(g_str, notice)
+        add(title, charsmax(title), "^n");
+        add(title, charsmax(title), notice);
+      }
+    }
+  }
+
+  menu_setprop(mid, MPROP_TITLE, title);
 }

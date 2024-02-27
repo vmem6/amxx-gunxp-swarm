@@ -116,7 +116,7 @@ native gxp_set_player_data(pid, GxpPlayer:data_field, any:value = 0, const buffe
  *
  * @return             Value of statistics as identified by `stat`.
  */
-native gxp_get_player_stat(pid, GxpPlayerStats:stat);
+native gxp_get_player_stat(pid, stat);
 
 /*
  * Sets player statistic identified by `stat`.
@@ -129,14 +129,14 @@ native gxp_get_player_stat(pid, GxpPlayerStats:stat);
  *
  * @noreturn
  */
-native gxp_set_player_stat(pid, GxpPlayerStats:stat, any:value = 0);
+native gxp_set_player_stat(pid, stat, any:value = 0);
 
 native gxp_get_player_class(pid, class[GxpClass]);
 
 native gxp_register_class(const id[GXP_MAX_CLASS_ID_LENGTH + 1], GxpTeam:team, const acc_callback[] = "", const req_callback[] = "");
 
-native gxp_give_xp(pid, xp);
-native gxp_take_xp(pid, xp);
+native gxp_give_xp(pid, xp, bonus_xp = 0, const desc[] = "");
+native gxp_take_xp(pid, xp, bool:decrease_lvl);
 native gxp_give_gun(pid, gun_id);
 
 /*
@@ -147,6 +147,15 @@ native gxp_give_gun(pid, gun_id);
  * @return            `true` if player is a newbie; `false` otherwise.
  */
 native bool:gxp_is_newbie(pid);
+
+/*
+ * States whether player is a FreeVIP or not.
+ *
+ * @param pid         ID of player.
+ *
+ * @return            `true` if player is a FreeVIP; `false` otherwise.
+ */
+native bool:gxp_is_freevip(pid);
 
 /*
  * States whether player is a VIP or not.
@@ -251,6 +260,7 @@ forward gxp_round_ended(round);
 forward gxp_teams_swapped();
 
 forward gxp_player_spawned(pid);
+forward gxp_player_killed(pid, pid_killer, bool:hs, Array:contributors);
 forward gxp_player_cleanup(pid);
 
 forward gxp_player_used_ability(pid);

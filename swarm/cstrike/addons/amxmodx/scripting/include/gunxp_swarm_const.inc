@@ -32,6 +32,9 @@ enum _:GxpAmmoType
 
 /* Common > Internal > Other */
 
+/* TODO: this should eventually be rethought. */
+
+/* Ordered by level (0 - 23). */
 stock const _gxp_gun_names[_GXP_GUN_COUNT][] =
 {
   "Glock 18C",
@@ -60,6 +63,7 @@ stock const _gxp_gun_names[_GXP_GUN_COUNT][] =
   "M249 Para Machinegun"
 };
 
+/* Ordered by level (0 - 23). */
 stock const _gxp_internal_gun_names[_GXP_GUN_COUNT][] =
 {
   "weapon_glock18",
@@ -88,6 +92,7 @@ stock const _gxp_internal_gun_names[_GXP_GUN_COUNT][] =
   "weapon_m249"
 };
 
+/* Ordered by level (0 - 23). */
 stock const _gxp_gun_models[_GXP_GUN_COUNT][] =
 {
   "models/w_glock18.mdl",
@@ -116,6 +121,7 @@ stock const _gxp_gun_models[_GXP_GUN_COUNT][] =
   "models/w_m249.mdl"
 };
 
+/* Ordered by level (0 - 23). */
 stock const _gxp_weapon_ids[_GXP_GUN_COUNT] =
 {
   CSW_GLOCK18,
@@ -144,6 +150,7 @@ stock const _gxp_weapon_ids[_GXP_GUN_COUNT] =
   CSW_M249
 };
 
+/* Ordered by level (0 - 23). */
 stock const _gxp_bpammo[_GXP_GUN_COUNT] =
 {
   400,  // glock18
@@ -186,6 +193,7 @@ stock const Float:_gxp_ammo_kb_powers[] =
   0.8  // 50ae
 };
 
+/* Mapped to internal CS weapon IDs. */
 stock const _gxp_wpn_ammo_types[] =
 {
   -1,                   // unused
@@ -219,6 +227,78 @@ stock const _gxp_wpn_ammo_types[] =
   gxp_ammo_762nato,     // ak47
   -1,                   // unused (knife)
   gxp_ammo_57mm         // p90
+};
+
+/* Mapped to internal CS weapon IDs. */
+stock const _gxp_wpn_default_clip[] =
+{
+  0,    // unused
+  13,   // p228
+  0,    // unused (glock; see glock18)
+  10,   // scout
+  0,    // he grenade
+  7,    // xm1014
+  0,    // unused (c4)
+  30,   // mac10
+  30,   // aug
+  0,    // smoke grenade
+  30,   // elite
+  20,   // fiveseven
+  25,   // ump45
+  30,   // sg550
+  35,   // galil
+  25,   // famas
+  12,   // usp
+  20,   // glock18
+  10,   // awp
+  30,   // mp5navy
+  100,  // m249
+  8,    // m3
+  30,   // m4a1
+  30,   // tmp
+  20,   // g3sg1
+  0,    // unused (flashbang)
+  7,    // deagle
+  30,   // sg552
+  30,   // ak47
+  0,    // unused (knife)
+  50    // p90
+};
+
+/* Mapped to internal CS weapon IDs. */
+stock const _gxp_wpn_default_bpammo[] =
+{
+  0,    // unused
+  52,   // p228
+  0,    // unused (glock; see glock18)
+  90,   // scout
+  1,    // he grenade
+  32,   // xm1014
+  0,    // unused (c4)
+  100,  // mac10
+  90,   // aug
+  1,    // smoke grenade
+  120,  // elite
+  100,  // fiveseven
+  100,  // ump45
+  90,   // sg550
+  90,   // galil
+  90,   // famas
+  100,  // usp
+  120,  // glock18
+  30,   // awp
+  120,  // mp5navy
+  200,  // m249
+  32,   // m3
+  90,   // m4a1
+  120,  // tmp
+  90,   // g3sg1
+  1,    // unused (flashbang)
+  35,   // deagle
+  90,   // sg552
+  90,   // ak47
+  0,    // unused (knife)
+  100   // p90
 };
 
 /* GXP:SWARM:POWERS */
@@ -394,13 +474,18 @@ enum _:GxpUl
 
 /* GXP:SWARM:STATS */
 
-enum GxpPlayerStats
+enum _:GxpPlayerStats
 {
   gxp_pstats_kills,
+  gxp_pstats_assists,
+  Float:gxp_pstats_weighted_kills,
   gxp_pstats_deaths,
   gxp_pstats_hs,
   gxp_pstats_suicides,
-  gxp_pstats_survivals
+  gxp_pstats_survivals,
+  gxp_pstats_playtime,
+  gxp_pstats_playtime_ct,
+  gxp_pstats_aggro_time
 };
 
 /* GXP:SWARM:CORE */
@@ -429,9 +514,16 @@ enum GxpXpMethod
 
 enum _:GxpPrivileges
 {
-  gxp_priv_vip = 0,
+  gxp_priv_freevip = 0,
+  gxp_priv_vip,
   gxp_priv_admin,
   gxp_priv_sadmin
+};
+
+enum _:GxpKillContributor
+{
+  gxp_kc_pid = 0,
+  Float:gxp_kc_dmg
 };
 
 enum GxpPlayer
@@ -449,10 +541,14 @@ enum GxpPlayer
   pd_respawn_count,
   GxpRememberSelection:pd_remember_sel,
   Float:pd_ability_last_used,
+  bool:pd_ability_available,
+  bool:pd_ability_in_use,
   pd_powers[GxpPower],
   Array:pd_uls[GxpUlClass],
   pd_stats[GxpPlayerStats],
-  pd_round_kills
+  pd_round_kills,
+  Trie:pd_kill_contributors,
+  Float:pd_skill
 };
 
 /* Internal */
@@ -490,6 +586,7 @@ stock const _gxp_xp_level_map[_GXP_MAX_LEVEL + 1] =
 
 stock const _gxp_access_map[GxpPrivileges] =
 {
+  ADMIN_LEVEL_H,  // freevip
   ADMIN_CHAT,     // vip
   ADMIN_KICK,     // admin
   ADMIN_IMMUNITY  // s. admin
