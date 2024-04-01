@@ -327,6 +327,7 @@ public plugin_init()
 
 	register_forward(FM_EmitSound, "fm_emitsound_pre");
 	register_forward(FM_ClientKill, "fm_clientkill_pre");
+	register_forward(FM_CmdStart, "fm_cmdstart_post", ._post = 1);
 
 	/* Forwards > Ham */
 
@@ -446,9 +447,7 @@ public client_putinserver(pid)
 	reset_player_data(pid);
 
 	if (is_user_bot(pid)) {
-		gxp_ul_activate_free(pid);
-		gxp_ul_activate_newbie(pid);
-
+		gxp_ul_activate_bot(pid);
 		compute_skill(pid);
 	} else {
 		_gxp_sql_load_player_data(pid);
@@ -529,23 +528,15 @@ public fm_emitsound_pre(pid, chan, sample[], Float:vol, Float:attn, flag, pitch)
 	if (!is_user_connected(pid) || g_players[pid][pd_class] == 0)
 		return FMRES_IGNORED;
 
-	new class[GxpClass];
-	get_class(pid, class);
-
 	/* `+use` */
-	if (equal(sample, "common/wpn_denyselect.wav")) {
-		if (
-			!g_freeze_time && !g_round_ended
-			&& ((pev(pid, pev_flags) & FL_ONGROUND) || class[cls_midair_ability])
-		) {
-			ExecuteForward(g_fwd_player_used_ability, _, pid);
-		}
+	if (equal(sample, "common/wpn_denyselect.wav"))
 		return FMRES_SUPERCEDE;
-	}
 
 	if (equal(sample, "hostage", 7) || equal(sample, "nvg", 3))
 		return FMRES_SUPERCEDE;
 
+	new class[GxpClass];
+	get_class(pid, class);
 	if (class[cls_default_sounds])
 		return FMRES_IGNORED;
 
@@ -583,6 +574,24 @@ public fm_clientkill_pre(pid)
 {
 	console_print(pid, "%L", pid, "GXP_CONSOLE_NO_SUICIDE");
 	return FMRES_SUPERCEDE;
+}
+
+public fm_cmdstart_post(pid, uc_handle)
+{
+	if (!is_user_connected(pid) || g_players[pid][pd_class] == 0)
+		return;
+
+	new buttons = get_uc(uc_handle, UC_Buttons);
+	if ((buttons & IN_USE) && !(pev(pid, pev_oldbuttons) & IN_USE)) {
+		static class[GxpClass];
+		get_class(pid, class);
+		if (
+			!g_freeze_time && !g_round_ended
+			&& ((pev(pid, pev_flags) & FL_ONGROUND) || class[cls_midair_ability])
+		) {
+			ExecuteForward(g_fwd_player_used_ability, _, pid);
+		}
+	}
 }
 
 /* Forwards > Ham */
@@ -689,19 +698,6 @@ public ham_player_takedamage_post(
 		new Float:stored_dmg = 0.0;
 		TrieGetCell(g_players[pid_victim][pd_kill_contributors], id_att_str, stored_dmg);
 		TrieSetCell(g_players[pid_victim][pd_kill_contributors], id_att_str, stored_dmg + dmg);
-
-#if defined DEBUG
-    static name[MAX_NAME_LENGTH + 1];
-    get_user_name(pid_victim, name, charsmax(name));
-    ULOG( \
-      "gxp_stats", INFO, id_attacker, \
-      "^"@name^" (@id/%d) damaged ^"%s^" (%d): %.1f dmg (total: %.1f). \
-      [Team(c/v): @team/%d] [HP: %.1f] [Max. HP: %.1f] [Contributors: %d]", \
-      state_get_player_sid(id_attacker), name, pid_victim, dmg, stored_dmg + dmg, \
-      get_user_team(pid_victim), hp, float(get_max_hp(pid_victim)), \
-      TrieGetSize(g_players[pid_victim][pd_kill_contributors]) \
-    );
-#endif // DEBUG
 	}
 
 	/* We handle some logic concerning user death here primarily because we need
@@ -725,19 +721,21 @@ public ham_player_takedamage_post(
 	new Float:xp = dmg*class[cls_xp_when_killed]/class[cls_health];
 	if (!is_newbie(id_attacker))
 		xp *= 0.8; // -20%
+	if (is_user_bot(pid_victim))
+		xp *= 0.01;
 
 	if (xp > 10000.0) {
 		ULOG( \
 			"gxp_core", WARNING, id_attacker, \
 			"[BUG-H] ^"@name^" (@id/%d) would've received %d XP! [Damage: %.1f] [Victim: %s (%.1f HP)]", \
-			state_get_player_sid(id_attacker), xp, dmg, class[cls_title], hp \
+			state_get_player_sid(id_attacker), floatround(xp), dmg, class[cls_title], hp \
 		);
 		return;
 	} else if (xp > 2500.0) {
 		ULOG( \
 			"gxp_core", WARNING, id_attacker, \
 			"[BUG-M] ^"@name^" (@id/%d) received %d XP! [Damage: %.1f] [Victim: %s (%.1f HP)]", \
-			state_get_player_sid(id_attacker), xp, dmg, class[cls_title], hp \
+			state_get_player_sid(id_attacker), floatround(xp), dmg, class[cls_title], hp \
 		);
 	}
 
@@ -789,11 +787,12 @@ public ham_player_spawn_post(pid)
 
 	suit_up(pid);
 
-	/* Reset ability cooldown if its' longer than 1 s. */
+	/* Reset ability cooldowns to 1 s. */
 	new class[GxpClass];
 	get_class(pid, class);
-	if (class[cls_ability_cooldown] > 1.0)
-		g_players[pid][pd_ability_last_used] = get_gametime() - class[cls_ability_cooldown] + 1.0;
+	g_players[pid][pd_ability_last_used] = get_gametime() - class[cls_ability_cooldown] + 1.0;
+	g_players[pid][pd_secn_ability_last_used] =
+		get_gametime() - class[cls_secn_ability_cooldown] + 1.0;
 	/* By default, assume all classes have abilities which are ready to be used
 	 * the moment a player spawns. */
 	g_players[pid][pd_ability_available] = true;
@@ -1200,7 +1199,8 @@ public task_end_round()
 	g_round_ending = false;
 	g_round_ended = true;
 
-	new total_players = get_playersnum_ex(GetPlayers_ExcludeHLTV | GetPlayers_MatchTeam, "TERRORIST")
+	new total_players =
+		get_playersnum_ex(GetPlayers_ExcludeHLTV | GetPlayers_MatchTeam | GetPlayers_ExcludeBots, "TERRORIST")
 		+ get_playersnum_ex(GetPlayers_ExcludeHLTV | GetPlayers_MatchTeam, "CT");
 	if (total_players >= g_survival_min_players) {
 		new xp = g_survival_xp;
@@ -1409,8 +1409,8 @@ set_xp(pid, xp_new, bool:decrease_lvl = false)
 	if (old_lvl < lvl) {
 		g_players[pid][pd_level] = lvl;
 
-		new origin[3];
-		get_user_origin(pid, origin);
+		new Float:origin[3];
+		pev(pid, pev_origin, origin);
 
 		ufx_te_explosion(origin, g_spr_level_up, 3.0, 15, ufx_explosion_nosound);
 		emit_sound(pid, CHAN_ITEM, SOUND_LEVELLED_UP, 1.0, ATTN_NORM, 0, PITCH_NORM);
@@ -1473,10 +1473,15 @@ suit_up(pid, bool:bypass_remember_sel = false)
 				fm_give_item(pid, "weapon_smokegrenade");
 		}
 
-		if (bypass_remember_sel || g_players[pid][pd_remember_sel] != gxp_remember_sel_off) {
-			if (g_players[pid][pd_level] >= _GXP_SECN_GUN_COUNT)
-				give_gun(pid, g_players[pid][pd_primary_gun]);
-			give_gun(pid, g_players[pid][pd_secondary_gun]);
+		if (is_user_bot(pid)) {
+			give_gun(pid, random_num(_GXP_SECN_GUN_COUNT, _GXP_GUN_COUNT - 1)); // primary
+			give_gun(pid, random_num(0, _GXP_SECN_GUN_COUNT - 1)); 							// secondary
+		} else {
+			if (bypass_remember_sel || g_players[pid][pd_remember_sel] != gxp_remember_sel_off) {
+				if (g_players[pid][pd_level] >= _GXP_SECN_GUN_COUNT)
+					give_gun(pid, g_players[pid][pd_primary_gun]);
+				give_gun(pid, g_players[pid][pd_secondary_gun]);
+			}
 		}
 	}
 }
@@ -1572,6 +1577,7 @@ reset_player_data(pid)
   g_players[pid][pd_primary_gun]				= 6;
   g_players[pid][pd_secondary_gun]			= 0;
   g_players[pid][pd_remember_sel]				= gxp_remember_sel_off;
+  g_players[pid][pd_secn_ability_last_used]	= 0.0;
   g_players[pid][pd_ability_last_used]	= 0.0;
   g_players[pid][pd_ability_in_use] 		= false;
   g_players[pid][pd_respawn_count]			= 0;
@@ -1579,7 +1585,12 @@ reset_player_data(pid)
   g_players[pid][pd_kill_contributors]	= TrieCreate();
   g_players[pid][pd_skill]							= g_skill_base;
 
-  arrayset(g_players[pid][pd_powers], 0, _:GxpPower);
+  if (is_user_bot(pid)) {
+  	for (new i = 0; i != GxpPower; ++i)
+  		g_players[pid][pd_powers][i] = random_num(1, 5);
+	} else {
+	  arrayset(g_players[pid][pd_powers], 0, _:GxpPower);
+	}
   for (new i = 0; i != GxpUlClass; ++i)
   	g_players[pid][pd_uls][i] = ArrayCreate();
   arrayset(g_players[pid][pd_stats], 0, _:GxpPlayerStats);

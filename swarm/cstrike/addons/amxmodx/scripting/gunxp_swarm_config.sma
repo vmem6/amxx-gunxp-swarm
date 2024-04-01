@@ -40,15 +40,16 @@ enum _:Property
 
 new const g_kp_map[][] =
 {
-  { "title",            cls_title,            pt_string, GXP_MAX_CLASS_TITLE_LENGTH },
-  { "default_sounds",   cls_default_sounds,   pt_bool,   5                          },
-  { "health",           cls_health,           pt_int,    1                          },
-  { "armour",           cls_armour,           pt_int,    1                          },
-  { "speed",            cls_speed,            pt_int,    1                          },
-  { "gravity",          cls_gravity,          pt_float,  1                          },
-  { "ability_cooldown", cls_ability_cooldown, pt_float,  1                          },
-  { "xp_when_killed",   cls_xp_when_killed,   pt_int,    1                          },
-  { "midair_ability",   cls_midair_ability,   pt_bool,   5                          }
+  { "title",                  cls_title,                  pt_string, GXP_MAX_CLASS_TITLE_LENGTH },
+  { "default_sounds",         cls_default_sounds,         pt_bool,   5                          },
+  { "health",                 cls_health,                 pt_int,    1                          },
+  { "armour",                 cls_armour,                 pt_int,    1                          },
+  { "speed",                  cls_speed,                  pt_int,    1                          },
+  { "gravity",                cls_gravity,                pt_float,  1                          },
+  { "ability_cooldown",       cls_ability_cooldown,       pt_float,  1                          },
+  { "secn_ability_cooldown",  cls_secn_ability_cooldown,  pt_float,  1                          },
+  { "xp_when_killed",         cls_xp_when_killed,         pt_int,    1                          },
+  { "midair_ability",         cls_midair_ability,         pt_bool,   5                          }
 };
 
 new g_class[GxpClass];
@@ -379,17 +380,18 @@ save_class()
 
 reset_class()
 {
-  g_class[cls_id]               = "";
-  g_class[cls_title]            = "";
-  g_class[cls_default_sounds]   = false;
-  g_class[cls_team]             = tm_unclassified;
-  g_class[cls_health]           = 100;
-  g_class[cls_armour]           = 100;
-  g_class[cls_speed]            = 255;
-  g_class[cls_gravity]          = 1.0;
-  g_class[cls_ability_cooldown] = 1.0;
-  g_class[cls_xp_when_killed]   = 0;
-  g_class[cls_misc]             = TrieCreate();
-  g_class[cls_sounds]           = TrieCreate();
-  g_class[cls_models]           = TrieCreate();
+  g_class[cls_id]                     = "";
+  g_class[cls_title]                  = "";
+  g_class[cls_default_sounds]         = false;
+  g_class[cls_team]                   = tm_unclassified;
+  g_class[cls_health]                 = 100;
+  g_class[cls_armour]                 = 100;
+  g_class[cls_speed]                  = 255;
+  g_class[cls_gravity]                = 1.0;
+  g_class[cls_ability_cooldown]       = 1.0;
+  g_class[cls_secn_ability_cooldown]  = -1.0;
+  g_class[cls_xp_when_killed]         = 0;
+  g_class[cls_misc]                   = TrieCreate();
+  g_class[cls_sounds]                 = TrieCreate();
+  g_class[cls_models]                 = TrieCreate();
 }

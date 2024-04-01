@@ -471,7 +471,7 @@ public task_roll_lightning()
       if (!UBITS_PCHECK(g_lightning_enabled, pid))
         continue;
 
-      ufx_te_beampoints(0, beg, end, g_spr_laserbeam, 0, 1.0, 0.6, 3.0, 10.0, {255, 255, 255}, 255, 1.0);
+      ufx_te_beampoints(0, beg, end, g_spr_laserbeam, 0, 1.0, 0.6, 3.0, 6.0, {255, 255, 255}, 255, 1.0);
       ufx_te_dlight(end, 200, {255, 255, 255}, 50, 0);
 
       message_begin(MSG_ONE_UNRELIABLE, SVC_SPAWNSTATICSOUND, .player = pid);
@@ -541,8 +541,10 @@ Float:get_sky_z()
   new ct_spawn_point = find_ent_by_class(FM_NULLENT, "info_player_start");
   pev(ct_spawn_point, pev_origin, origin);
 
-  while (point_contents(origin) != CONTENTS_SKY)
+#define MAX_ITERS 401
+  for (new i = 0; point_contents(origin) != CONTENTS_SKY && i != MAX_ITERS; ++i)
     origin[2] += 5.0;
+#undef MAX_ITERS
 
   return origin[2] - 5.0;
 }
@@ -635,6 +637,7 @@ bool:find_lightning_spot(beg[3], end[3])
     ++iter;
 #define MAX_ITERS 100
   } while ((!within_bounds || !in_open || !outside) && iter < MAX_ITERS);
+#undef MAX_ITERS
 
   free_tr2(tr);
 

@@ -34,6 +34,7 @@ public plugin_natives()
   register_native("gxp_ul_activate", "native_activate");
   register_native("gxp_ul_activate_free", "native_activate_free");
   register_native("gxp_ul_activate_newbie", "native_activate_newbie");
+  register_native("gxp_ul_activate_bot", "native_activate_bot");
 
   register_native("gxp_ul_deactivate", "native_deactivate");
 
@@ -185,6 +186,24 @@ public native_activate_newbie(plugin, argc)
       ArrayGetArray(uls, j, ul);
       if (ul[gxp_ul_newbie])
         activate(pid, ul, .bypass_reqs = true, .automatic = true);
+    }
+  }
+}
+
+public native_activate_bot(plugin, argc)
+{
+  enum { param_pid = 1 };
+
+  new pid = get_param(param_pid);
+  if (!is_user_bot(pid))
+    return;
+
+  new ul[GxpUl];
+  for (new i = 0; i != GxpUlClass; ++i) {
+    new Array:uls = g_uls[i];
+    for (new j = 0; j != ArraySize(uls); ++j) {
+      ArrayGetArray(uls, j, ul);
+      activate(pid, ul, .bypass_reqs = true, .automatic = true);
     }
   }
 }

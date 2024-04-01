@@ -102,7 +102,7 @@ public gxp_player_data_loaded(pid)
 {
   set_task_ex(0.5, "task_query_cvars", pid + tid_query_cvar, .flags = SetTask_Repeat);
   set_task_ex(
-    2.0, "task_query_filterstuffcmd_cvar", pid + tid_query_filterstuffcmd_cvar,
+    5.0, "task_query_filterstuffcmd_cvar", pid + tid_query_filterstuffcmd_cvar,
     .flags = SetTask_Repeat
   );
   task_query_filterstuffcmd_cvar(pid + tid_query_filterstuffcmd_cvar);

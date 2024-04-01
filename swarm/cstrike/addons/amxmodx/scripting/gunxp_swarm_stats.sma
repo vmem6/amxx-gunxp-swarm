@@ -164,6 +164,9 @@ public gxp_aggro_zone_think(eid)
 
 public gxp_player_killed(pid, pid_killer, bool:hs, Array:contributors)
 {
+  if (is_user_bot(pid) || is_user_bot(pid_killer))
+    return;
+
   INC_STAT(pid, gxp_pstats_deaths);
 
   new max_hp = gxp_get_max_hp(pid);

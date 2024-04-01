@@ -848,29 +848,52 @@ public task_show_zombie_hud(tid)
   new class[GxpClass];
   gxp_get_player_class(pid, class);
 
+  static msg[512];
+
   if (bool:gxp_get_player_data(pid, pd_ability_available)) {
     new cooldown_left = floatround(
       class[cls_ability_cooldown] -
         (get_gametime() - Float:gxp_get_player_data(pid, pd_ability_last_used))
     );
     if (cooldown_left > 0) {
-      ShowSyncHudMsg(
-        pid, g_hudsync_bl,
+      formatex(
+        msg, charsmax(msg),
         "%L", pid, "GXP_HUD_ZOMBIE_STATUS_COOLDOWN",
         class[cls_title], pev(pid, pev_health), cooldown_left
       );
     } else {
-      ShowSyncHudMsg(
-        pid, g_hudsync_bl,
+      formatex(
+        msg, charsmax(msg),
         "%L", pid, "GXP_HUD_ZOMBIE_STATUS_READY", class[cls_title], pev(pid, pev_health)
       );
     }
   } else {
-    ShowSyncHudMsg(
-      pid, g_hudsync_bl,
+    formatex(
+      msg, charsmax(msg),
       "%L", pid, "GXP_HUD_ZOMBIE_STATUS", class[cls_title], pev(pid, pev_health)
     );
   }
+
+  /* Only classes that have a secondary ability cooldown defined pass this.
+   *
+   * TODO: this should eventually change. */
+  if (Float:class[cls_secn_ability_cooldown] > 0.0) {
+    static buff[128];
+    new cooldown_left = floatround(
+      class[cls_secn_ability_cooldown] -
+        (get_gametime() - Float:gxp_get_player_data(pid, pd_secn_ability_last_used))
+    );
+    if (cooldown_left > 0) {
+      formatex(
+        buff, charsmax(buff), "%L", pid, "GXP_HUD_ZOMBIE_STATUS_SECN_POWER_CDOWN", cooldown_left
+      );
+    } else {
+      formatex(buff, charsmax(buff), "%L", pid, "GXP_HUD_ZOMBIE_STATUS_SECN_POWER");
+    }
+    add(msg, charsmax(buff), buff);
+  }
+
+  ShowSyncHudMsg(pid, g_hudsync_bl, msg);
 }
 
 public task_show_spec_hud(tid)
